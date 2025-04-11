@@ -1,8 +1,8 @@
 {
-  "name": "bedrock-oshiete-sils-1",
+  "name": "xils-backend-services",
   "version": "0.1.0",
   "bin": {
-    "bedrock-oshiete-sils-1": "bin/bedrock-oshiete-sils-1.js"
+    "xils-backend-services": "bin/xils-backend-services.js"
   },
   "scripts": {
     "build": "tsc",

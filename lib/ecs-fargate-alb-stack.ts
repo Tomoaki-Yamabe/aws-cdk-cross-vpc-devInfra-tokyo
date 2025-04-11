@@ -4,13 +4,17 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 
 export class EcsFargateAlbStack extends cdk.Stack {
+  public readonly endpointServiceId: string;   // output endpoint service id
+  public readonly nlbDnsName: string;   // output dns namte
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Select vpc
+    // Select available vpc
     const vpc = ec2.Vpc.fromLookup(this, 'ExistingVpc', {
       vpcId: 'vpc-0585987c868bcae3b',
     });
@@ -20,6 +24,8 @@ export class EcsFargateAlbStack extends cdk.Stack {
       ec2.Subnet.fromSubnetId(this, `LBEndpointSubnet${index}`, subnetId)
     );
 
+
+    // add necessary vpc endpoint
     vpc.addInterfaceEndpoint('EcrApiEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECR,
       privateDnsEnabled: true,
@@ -38,9 +44,9 @@ export class EcsFargateAlbStack extends cdk.Stack {
       subnets: { subnets: lbEndpointSubnets },
     });
     
+
     // create ECS clustor
     const cluster = new ecs.Cluster(this, 'EcsCluster', { vpc });
-
 
     // define Fargate task.json
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
@@ -48,6 +54,7 @@ export class EcsFargateAlbStack extends cdk.Stack {
       cpu: 512,
     });
     
+    // attach poricy for execution role
     taskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
       actions: [
         'ecr:GetAuthorizationToken',
@@ -60,13 +67,14 @@ export class EcsFargateAlbStack extends cdk.Stack {
       resources: ['*'],
     }));
 
-    // import container
+
+    // import container image
     const ecrImage = ecs.ContainerImage.fromRegistry('481393820746.dkr.ecr.us-west-2.amazonaws.com/bedrock/sils-chatbot');
 
     taskDef.addContainer('AppContainer', {
       image: ecrImage,
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'ecs' }),
-      portMappings: [{ containerPort: 80 }],
+      portMappings: [{ containerPort: 8501 }],
     });
 
     // create Fargate survice
@@ -78,30 +86,60 @@ export class EcsFargateAlbStack extends cdk.Stack {
       vpcSubnets: { subnets: lbEndpointSubnets },
     });
 
-    // create ALB and adde listner
-    const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
+    service.connections.securityGroups[0].addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(8501),
+      'Allow NLB to access Fargate service'
+    );
+
+    // create NLB and adde listner
+    const nlb = new elbv2.NetworkLoadBalancer(this, 'NLB', {
       vpc,
       internetFacing: false,
-      vpcSubnets: { subnets: lbEndpointSubnets },
+      vpcSubnets: { subnets: lbEndpointSubnets},
     });
-
-    const listener = lb.addListener('Listener', {
+    const listener = nlb.addListener('Listener', {
       port: 80,
-      open: true,
+      protocol: elbv2.Protocol.TCP,
     });
 
     // Linking target.json
     listener.addTargets('ECS', {
-      port: 80,
-      targets: [service],
+      port: 8501,
+      protocol: elbv2.Protocol.TCP,
+      targets: [service.loadBalancerTarget({
+        containerName: 'AppContainer',
+        containerPort: 8501,
+      })],
       healthCheck: {
-        path: '/',
+        port: '8501',
+        protocol: elbv2.Protocol.TCP,
       },
     });
 
-    // set alb dns name
-    new cdk.CfnOutput(this, 'LoadBalancerDNS', {
-      value: lb.loadBalancerDnsName,
+    // create Private endpoint service
+    const vpcEndpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
+      networkLoadBalancerArns: [nlb.loadBalancerArn],
+      acceptanceRequired: false, // auto authentification
     });
+
+    // output dns name and endpoint service id
+    this.nlbDnsName = nlb.loadBalancerDnsName;
+    this.endpointServiceId = vpcEndpointService.ref;
+
+    new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName });
+    new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
+
+    const serviceConfig = {
+      serviceName: 'xils-backend-service',
+      nlbDnsName: this.nlbDnsName,
+      targetPort: 8501,
+    };
+
+    new ssm.StringParameter(this, 'ServiceConfigParameter',{
+      parameterName: '/services/xils-backend-service/config',
+      stringValue: JSON.stringify(serviceConfig),
+    })
+
   }
 }

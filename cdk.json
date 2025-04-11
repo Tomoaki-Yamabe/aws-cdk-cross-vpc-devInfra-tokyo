@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/bedrock-oshiete-sils-1.ts",
+  "app": "npx ts-node --prefer-ts-exts bin/xils-backend-services.ts",
   "watch": {
     "include": [
       "**"
