@@ -123,6 +123,19 @@ export class EcsFargateAlbStack extends cdk.Stack {
       acceptanceRequired: false, // auto authentification
     });
 
+    // set a endpointService name to ssm parameter store
+    new ssm.StringParameter(this, 'EndpointServiceNameParameter', {
+      parameterName: '/infra/endpoint-service/name',
+      stringValue: `com.amazonaws.vpce.us-west-2.${vpcEndpointService.ref}`,
+    });
+    // set a endpoint service nld dns name to ssm parameter store
+    new ssm.StringParameter(this, 'EndpointServiceNlbDnsParameter', {
+      parameterName: '/infra/endpoint-service/nlb-dns',
+      stringValue: nlb.loadBalancerDnsName,
+    });
+
+    
+
     // output dns name and endpoint service id
     this.nlbDnsName = nlb.loadBalancerDnsName;
     this.endpointServiceId = vpcEndpointService.ref;
@@ -130,12 +143,12 @@ export class EcsFargateAlbStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName });
     new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
 
+    // set to ssm parameter store
     const serviceConfig = {
       serviceName: 'xils-backend-service',
       nlbDnsName: this.nlbDnsName,
       targetPort: 8501,
     };
-
     new ssm.StringParameter(this, 'ServiceConfigParameter',{
       parameterName: '/services/xils-backend-service/config',
       stringValue: JSON.stringify(serviceConfig),
