@@ -15,8 +15,6 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
 
 -----------------------------
-mkdir config-server-stack
-cd config-server-stack
 cdk init app --language=typescript
 npm install aws-cdk-lib constructs
 npm install @aws-cdk/aws-ec2

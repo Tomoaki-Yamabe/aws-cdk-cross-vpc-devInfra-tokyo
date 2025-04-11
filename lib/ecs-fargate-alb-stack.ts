@@ -7,6 +7,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 
+const LISTENER_PORT = 80;  // oshiete shils
+
 export class EcsFargateAlbStack extends cdk.Stack {
   public readonly endpointServiceId: string;   // output endpoint service id
   public readonly nlbDnsName: string;   // output dns namte
@@ -99,7 +101,7 @@ export class EcsFargateAlbStack extends cdk.Stack {
       vpcSubnets: { subnets: lbEndpointSubnets},
     });
     const listener = nlb.addListener('Listener', {
-      port: 80,
+      port: LISTENER_PORT,
       protocol: elbv2.Protocol.TCP,
     });
 
@@ -116,6 +118,8 @@ export class EcsFargateAlbStack extends cdk.Stack {
         protocol: elbv2.Protocol.TCP,
       },
     });
+
+    // --------------------------------------
 
     // create Private endpoint service
     const vpcEndpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
@@ -134,8 +138,6 @@ export class EcsFargateAlbStack extends cdk.Stack {
       stringValue: nlb.loadBalancerDnsName,
     });
 
-    
-
     // output dns name and endpoint service id
     this.nlbDnsName = nlb.loadBalancerDnsName;
     this.endpointServiceId = vpcEndpointService.ref;
@@ -147,6 +149,7 @@ export class EcsFargateAlbStack extends cdk.Stack {
     const serviceConfig = {
       serviceName: 'xils-backend-service',
       nlbDnsName: this.nlbDnsName,
+      listenerPort: LISTENER_PORT,
       targetPort: 8501,
     };
     new ssm.StringParameter(this, 'ServiceConfigParameter',{
