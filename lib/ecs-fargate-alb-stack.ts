@@ -99,6 +99,7 @@ export class EcsFargateAlbStack extends cdk.Stack {
       vpc,
       internetFacing: false,
       vpcSubnets: { subnets: lbEndpointSubnets},
+      crossZoneEnabled: true,
     });
     const listener = nlb.addListener('Listener', {
       port: LISTENER_PORT,
