@@ -14,33 +14,39 @@ setcap 'cap_net_bind_service=+ep' $(which uvicorn)
 
 # Create application source in /root
 cat <<'EOF' > /root/config_server.py
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
-import boto3
-import json
+def list_service_configs():
+    paginator = ssm.get_paginator('describe_parameters')
+    parameters = []
 
-app = FastAPI()
-ssm = boto3.client('ssm', region_name='us-west-2')
+    for page in paginator.paginate(ParameterFilters=[
+        {
+            'Key': 'Name',
+            'Option': 'BeginsWith',
+            'Values': ['/services/']
+        }
+    ]):
+        for param in page['Parameters']:
+            parameters.append(param['Name'])
 
-SERVICE_NAMES = [
-    "xils-backend-service",
-    "xils-backend-service",
-    "xils-backend-service",
-]
-
-@app.get("/", response_class=HTMLResponse)
-def root():
     service_data = []
-    for service in SERVICE_NAMES:
+    for name in parameters:
         try:
-            response = ssm.get_parameter(Name=f"/services/{service}/config")
+            response = ssm.get_parameter(Name=name)
             config = json.loads(response['Parameter']['Value'])
             service_data.append(config)
         except Exception as e:
             service_data.append({
-                "serviceName": service,
+                "serviceName": name.split('/')[-2],
+                "nlbDnsName": "N/A",
+                "listenerPort": "N/A",
                 "error": str(e)
             })
+
+    return service_data
+
+@app.get("/", response_class=HTMLResponse)
+def root():
+    service_data = list_service_configs()
 
     html = """
     <html>
@@ -50,7 +56,12 @@ def root():
             <p>This is FastAPI service gateway</p>
             <p><a href="/docs">📘 Swagger UI</a></p>
             <table border="1">
-                <tr><th>Service Name</th><th>DNS</th><th>Port</th><th>API</th></tr>
+                <tr>
+                    <th>Service Name</th>
+                    <th>DNS</th>
+                    <th>Port</th>
+                    <th>API</th>
+                </tr>
     """
 
     for s in service_data:
