@@ -14,6 +14,14 @@ setcap 'cap_net_bind_service=+ep' $(which uvicorn)
 
 # Create application source in /root
 cat <<'EOF' > /root/config_server.py
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
+import boto3
+import json
+
+app = FastAPI()
+ssm = boto3.client('ssm', region_name='us-west-2')
+
 def list_service_configs():
     paginator = ssm.get_paginator('describe_parameters')
     parameters = []
