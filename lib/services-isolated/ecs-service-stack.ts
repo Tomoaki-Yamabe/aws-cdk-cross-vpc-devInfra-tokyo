@@ -10,6 +10,7 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as actions from 'aws-cdk-lib/aws-codepipeline-actions';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
+  loadBalancerArn: string;
   cluster: ecs.Cluster;
   vpc: ec2.IVpc;
   sharedNlb: elbv2.NetworkLoadBalancer;
@@ -64,10 +65,20 @@ export class EcsServiceStack extends cdk.Stack {
 
     
     // create listener
-    const listener = props.sharedNlb.addListener(`${props.serviceName}Listener`, {
+    const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNlb', {
+      loadBalancerArn: props.loadBalancerArn,
+    });
+    const listener = new elbv2.NetworkListener(this, 'ServiceListener', {
+      loadBalancer: importedNlb,
       port: props.listenerPort,
       protocol: elbv2.Protocol.TCP,
     });
+
+    // 
+    // const listener = props.sharedNlb.addListener(`${props.serviceName}Listener`, {
+    //   port: props.listenerPort,
+    //   protocol: elbv2.Protocol.TCP,
+    // });
 
    
     // create target group and attach to NLB listener

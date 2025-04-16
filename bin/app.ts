@@ -44,7 +44,7 @@ const services = [
   },
   {
     id: 'BlablaService',
-    ecrRepoName: 'bedrock/blabla-service',
+    ecrRepoName: 'bedrock/sils-chatbot',
     containerPort: 8080,
     listenerPort: 50001,
     memoryLimitMiB: 1024,
@@ -56,6 +56,7 @@ const services = [
 for (const svc of services) {
   new EcsServiceStack(app, `SILS-APP-${svc.id}`, {
     env,
+    loadBalancerArn: infraStack.loadBalancerArn,
     cluster: infraStack.cluster,
     vpc: infraStack.vpc,
     sharedNlb: infraStack.nlb,

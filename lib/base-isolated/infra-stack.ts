@@ -17,6 +17,7 @@ export class IsolatedInfraStack extends cdk.Stack {
     public readonly nlb: elbv2.NetworkLoadBalancer;
     public readonly nlbDnsName: string;
     public readonly endpointServiceId: string;
+    public readonly loadBalancerArn: string;
 
     constructor(scope: Construct, id: string, props: IsolatedVpcStackProps) {
         super(scope, id, props);
@@ -47,7 +48,6 @@ export class IsolatedInfraStack extends cdk.Stack {
             vpcSubnets: { subnets: this.subnets },
             crossZoneEnabled: true,
         });
-
 
         // ----------------------- Private Link Attachment ----------------------- //
         // create Private endpoint service
@@ -90,8 +90,13 @@ export class IsolatedInfraStack extends cdk.Stack {
         new ssm.StringParameter(this, 'InfraNlbDnsName', {
             parameterName: '/isolated/infra/nlb/dns',
             stringValue: this.nlbDnsName,
-          });
-          
+        });
+
+        new ssm.StringParameter(this, 'InfraNlbArn', {
+            parameterName: '/isolated/infra/nlb/arn',
+            stringValue: this.nlb.loadBalancerArn,
+        });
+  
         new ssm.StringParameter(this, 'InfraEndpointServiceId', {
             parameterName: '/isolated/infra/endpoint-service/id',
             stringValue: this.endpointServiceId,
@@ -106,10 +111,11 @@ export class IsolatedInfraStack extends cdk.Stack {
         new ssm.StringParameter(this, 'InfraEndpointServiceNlbDns', {
             parameterName: '/isolated/infra/endpoint-service/nlb-dns',
             stringValue: this.nlbDnsName,
-        });    
+        });
 
         // ----------------------- Outputs ----------------------- //
         new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName });
         new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
+        new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.nlb.loadBalancerArn, exportName: 'IsolatedNlbArn'});
     }
 }
