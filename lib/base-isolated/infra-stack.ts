@@ -132,7 +132,7 @@ export class IsolatedInfraStack extends cdk.Stack {
         });
 
         // ----------------------- Outputs ----------------------- //
-        new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName });
+        new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'IsolatedNlbDnsName' });
         new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
         new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.nlb.loadBalancerArn, exportName: 'IsolatedNlbArn'});
     }

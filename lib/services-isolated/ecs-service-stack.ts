@@ -13,7 +13,6 @@ export interface EcsServiceStackProps extends cdk.StackProps {
   loadBalancerArn: string;
   cluster: ecs.Cluster;
   vpc: ec2.IVpc;
-  sharedNlb: elbv2.NetworkLoadBalancer;
   listenerPort: number;
   containerPort: number;
   ecrRepoName: string;
@@ -32,19 +31,19 @@ export class EcsServiceStack extends cdk.Stack {
     cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-        memoryLimitMiB: props.memoryLimitMiB,
-        cpu: props.cpu,
-      });
+      memoryLimitMiB: props.memoryLimitMiB,
+      cpu: props.cpu,
+    });
 
     // create execution role for ECS task
     taskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
-        actions: [
-            'ecr:*',
-            'logs:*',
-        ],
-        resources: ['*'],
+      actions: [
+        'ecr:*',
+        'logs:*',
+      ],
+      resources: ['*'],
     }));
-    
+
 
     // inport ECR repository and defenition container
     const ecrRepo = ecr.Repository.fromRepositoryName(this, 'EcrRepo', props.ecrRepoName);
@@ -54,40 +53,38 @@ export class EcsServiceStack extends cdk.Stack {
       portMappings: [{ containerPort: props.containerPort }],
     });
 
+    const fargateSg = new ec2.SecurityGroup(this, 'FargateServiceSG', {
+      vpc: props.vpc,
+      description: 'Allow all TCP traffic',
+      allowAllOutbound: true,
+    });
+
+    fargateSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcpRange(0, 65535), 'Allow all TCP from anywhere');
+    
 
     // create Fargate survice
     const service = new ecs.FargateService(this, 'FargateService', {
       cluster: props.cluster,
-      taskDefinition: taskDef,
+        taskDefinition: taskDef,
       desiredCount: 2,
       assignPublicIp: false,
+      securityGroups: [fargateSg],
     });
 
+    // Import the existing NLB by ARN
+    const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNLB', {
+      loadBalancerArn: props.loadBalancerArn,
+      vpc: props.vpc,
+      loadBalancerDnsName: cdk.Fn.importValue('IsolatedNlbDnsName'),
+    });
 
-    // create listener
-    // const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNlb', {
-    //   loadBalancerArn: props.loadBalancerArn,
-    //   vpc: props.vpc,
-    // });
-    // const listener = new elbv2.NetworkListener(this, 'ServiceListener', {
-    //   loadBalancer: importedNlb,
-    //   port: props.listenerPort,
-    //   protocol: elbv2.Protocol.TCP,
-    // });
-
-    const listener = props.sharedNlb.addListener(`${props.serviceName}Listener`, {
+    // Create listener and associate directly with service's target group
+    const listener = new elbv2.NetworkListener(this, `${props.serviceName}Listener`, {
+      loadBalancer: importedNlb,
       port: props.listenerPort,
       protocol: elbv2.Protocol.TCP,
     });
 
-    // 
-    // const listener = props.sharedNlb.addListener(`${props.serviceName}Listener`, {
-    //   port: props.listenerPort,
-    //   protocol: elbv2.Protocol.TCP,
-    // });
-
-   
-    // create target group and attach to NLB listener
     listener.addTargets(`${props.serviceName}Target`, {
       port: props.containerPort,
       targets: [service.loadBalancerTarget({
@@ -102,32 +99,32 @@ export class EcsServiceStack extends cdk.Stack {
 
     // ------------ CodePipeline ------------ //
     const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
-    pipelineName: `${props.serviceName}-Pipeline`,
-    });   
+      pipelineName: `${props.serviceName}-Pipeline`,
+    });
 
     const sourceOutput = new codepipeline.Artifact();
 
     pipeline.addStage({
-    stageName: 'Source',
-    actions: [
+      stageName: 'Source',
+      actions: [
         new actions.EcrSourceAction({
-        actionName: 'ECRSource',
-        repository: ecrRepo,
-        imageTag: 'latest',
-        output: sourceOutput,
+          actionName: 'ECRSource',
+          repository: ecrRepo,
+          imageTag: 'latest',
+          output: sourceOutput,
         }),
-    ],
+      ],
     });
 
     pipeline.addStage({
-    stageName: 'Deploy',
-    actions: [
+      stageName: 'Deploy',
+      actions: [
         new actions.EcsDeployAction({
-        actionName: 'DeployAction',
-        service,
-        input: sourceOutput,
+          actionName: 'DeployAction',
+          service,
+          input: sourceOutput,
         }),
-    ],
+      ],
     });
 
     // output ssm parameter
@@ -135,15 +132,14 @@ export class EcsServiceStack extends cdk.Stack {
       parameterName: `/services/${props.serviceName}/config`,
       stringValue: JSON.stringify({
         serviceName: props.serviceName,
-        nlbDnsName: props.sharedNlb.loadBalancerDnsName,
+        nlbDnsName: importedNlb.loadBalancerDnsName,
         listenerPort: props.listenerPort,
         targetPort: props.containerPort,
       }),
     });
 
-
-    new cdk.CfnOutput(this, `${props.serviceName}NlbDnsName`, { 
-      value: props.sharedNlb.loadBalancerDnsName 
+    new cdk.CfnOutput(this, `${props.serviceName}NlbDnsName`, {
+      value: importedNlb.loadBalancerDnsName,
     });
   }
 }

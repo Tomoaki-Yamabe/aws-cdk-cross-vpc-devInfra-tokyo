@@ -59,7 +59,6 @@ for (const svc of services) {
     loadBalancerArn: infraStack.loadBalancerArn,
     cluster: infraStack.cluster,
     vpc: infraStack.vpc,
-    sharedNlb: infraStack.nlb,
     ...svc,
   });
 }
