@@ -63,13 +63,19 @@ export class EcsServiceStack extends cdk.Stack {
       assignPublicIp: false,
     });
 
-    
+
     // create listener
-    const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNlb', {
-      loadBalancerArn: props.loadBalancerArn,
-    });
-    const listener = new elbv2.NetworkListener(this, 'ServiceListener', {
-      loadBalancer: importedNlb,
+    // const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNlb', {
+    //   loadBalancerArn: props.loadBalancerArn,
+    //   vpc: props.vpc,
+    // });
+    // const listener = new elbv2.NetworkListener(this, 'ServiceListener', {
+    //   loadBalancer: importedNlb,
+    //   port: props.listenerPort,
+    //   protocol: elbv2.Protocol.TCP,
+    // });
+
+    const listener = props.sharedNlb.addListener(`${props.serviceName}Listener`, {
       port: props.listenerPort,
       protocol: elbv2.Protocol.TCP,
     });

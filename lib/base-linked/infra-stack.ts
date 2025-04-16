@@ -81,7 +81,9 @@ export class LinkedInfraStack extends cdk.Stack {
         const instance = new ec2.Instance(this, 'ConfigServerInstance', {
             vpc: this.vpc,
             instanceType: new ec2.InstanceType('t3.micro'),
-            machineImage: new ec2.AmazonLinuxImage(),
+            machineImage: new ec2.AmazonLinuxImage({
+              generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            }),            
             securityGroup: sg,
             vpcSubnets: { subnets: [selectedSubnet] },
             keyName: 'xils-developper',

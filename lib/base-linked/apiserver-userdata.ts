@@ -1,12 +1,19 @@
-// lib/services/linked-vpc/config-server-userdata.ts
 export const configServerUserData = `#!/bin/bash
+# Install Python3 & pip
 yum update -y
 yum install -y python3 git
-pip3 install --user fastapi "uvicorn[standard]" boto3
-setcap 'cap_net_bind_service=+ep' /home/ec2-user/.local/bin/uvicorn
 
-cat <<'EOF' > /home/ec2-user/config_server.py
+# Install FastAPI, uvicorn and boto3
+pip3 install fastapi "uvicorn[standard]" boto3
 
+# Ensure /usr/local/bin is in PATH
+export PATH=$PATH:/root/.local/bin
+
+# Set capability to allow uvicorn to use port 80
+setcap 'cap_net_bind_service=+ep' $(which uvicorn)
+
+# Create application source in /root
+cat <<'EOF' > /root/config_server.py
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 import boto3
@@ -41,39 +48,19 @@ def root():
         <body>
             <h1>Microservice Gateway</h1>
             <p>This is FastAPI service gateway</p>
-            <p><a href="/docs">📘 Swagger UIdocuments</a></p>
-        </body>
-        <head>
-            <title>Service Catalog</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid #ddd; padding: 8px; }
-                th { background-color: #f2f2f2; }
-                a { text-decoration: none; color: blue; }
-            </style>
-        </head>
-        <body>
-            <h2>Available Microservices</h2>
-            <table>
-                <tr>
-                    <th>Service Name</th>
-                    <th>DNS</th>
-                    <th>Connection Port</th>
-                    <th>Appli Port</th>
-                    <th>API</th>
-                </tr>
+            <p><a href="/docs">📘 Swagger UI</a></p>
+            <table border="1">
+                <tr><th>Service Name</th><th>DNS</th><th>Port</th><th>API</th></tr>
     """
 
     for s in service_data:
         html += f"""
-            <tr>
-                <td>{s.get("serviceName", "N/A")}</td>
-                <td>{s.get("nlbDnsName", "N/A")}</td>
-                <td>{s.get("listenerPort", "N/A")}</td>
-                <td>{s.get("targetPort", "N/A")}</td>
-                <td><a href="/api/{s.get("serviceName", "")}" target="_blank">/api/{s.get("serviceName", "")}</a></td>
-            </tr>
+                <tr>
+                    <td>{s.get("serviceName", "N/A")}</td>
+                    <td>{s.get("nlbDnsName", "N/A")}</td>
+                    <td>{s.get("listenerPort", "N/A")}</td>
+                    <td><a href="/api/{s.get("serviceName", "")}" target="_blank">/api/{s.get("serviceName", "")}</a></td>
+                </tr>
         """
 
     html += """
@@ -90,18 +77,11 @@ def get_service_config(service_name: str):
         return json.loads(response['Parameter']['Value'])
     except Exception as e:
         return {"error": str(e)}
-    """
-    return HTMLResponse(content=html)
-
-@app.get("/api/{service_name}", response_class=JSONResponse)
-def get_service_config(service_name: str):
-    try:
-        response = ssm.get_parameter(Name=f"/services/{service_name}/config")
-        return json.loads(response['Parameter']['Value'])
-    except Exception as e:
-        return {"error": str(e)}
 EOF
 
-# Run server without sudo
-nohup /home/ec2-user/.local/bin/uvicorn config_server:app --host 0.0.0.0 --port 80 > /home/ec2-user/config_server.log 2>&1 &
+# Navigate to application directory
+cd /root
+
+# Start FastAPI explicitly using absolute path
+nohup ~/.local/bin/uvicorn config_server:app --host 0.0.0.0 --port 80 > /root/config_server.log 2>&1 &
 `;

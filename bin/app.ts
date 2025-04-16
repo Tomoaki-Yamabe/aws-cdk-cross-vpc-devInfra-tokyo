@@ -45,7 +45,7 @@ const services = [
   {
     id: 'BlablaService',
     ecrRepoName: 'bedrock/sils-chatbot',
-    containerPort: 8080,
+    containerPort: 8501,
     listenerPort: 50001,
     memoryLimitMiB: 1024,
     cpu: 512,

@@ -57,27 +57,45 @@ export class IsolatedInfraStack extends cdk.Stack {
         });
         this.endpointServiceId = endpointService.ref;
         this.nlbDnsName = this.nlb.loadBalancerDnsName;
-        
+        this.loadBalancerArn = this.nlb.loadBalancerArn;
+
 
         // ----------------------- ECS ----------------------- //
         this.cluster = new ecs.Cluster(this, 'EcsCluster', { vpc: this.vpc });
     
 
         // ------------------------ VPC Endpoints ----------------------- //
+        // Create Security Group for VPC endpoints
+        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: true,
+            description: 'Allow ECS tasks to access VPC endpoints',
+        });
+
+        // Allow access Security Group
+        endpointSecurityGroup.addIngressRule(
+            ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+            ec2.Port.tcp(443),
+            'Allow HTTPS from within the VPC'
+        );
+  
         this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
             service: ec2.InterfaceVpcEndpointAwsService.ECR,
             privateDnsEnabled: true,
             subnets: { subnets: this.subnets },
+            securityGroups: [endpointSecurityGroup],
         });
         this.vpc.addInterfaceEndpoint('EcrDkrEndpoint', {
             service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER,
             privateDnsEnabled: true,
             subnets: { subnets: this.subnets },
+            securityGroups: [endpointSecurityGroup],
         });
         this.vpc.addInterfaceEndpoint('CloudWatchLogsEndpoint', {
             service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
             privateDnsEnabled: true,
             subnets: { subnets: this.subnets },
+            securityGroups: [endpointSecurityGroup],
         });
 
 
