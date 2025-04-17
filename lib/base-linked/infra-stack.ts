@@ -4,6 +4,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { configServerUserData } from './apiserver-userdata';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
 interface LinkedVpcStackProps extends cdk.StackProps {
   vpcId: string;
@@ -13,6 +14,10 @@ interface LinkedVpcStackProps extends cdk.StackProps {
 export class LinkedInfraStack extends cdk.Stack {
     public readonly vpc: ec2.IVpc;
     public readonly subnets: ec2.ISubnet[];
+    public readonly linkednlb: elbv2.NetworkLoadBalancer;
+    public readonly nlbDnsName: string;
+    public readonly endpointServiceId: string;
+    public readonly loadBalancerArn: string;
 
     constructor(scope: Construct, id: string, props: LinkedVpcStackProps) {
         super(scope, id, props);
@@ -46,19 +51,61 @@ export class LinkedInfraStack extends cdk.Stack {
           privateDnsEnabled: false,
           subnets: { subnets: this.subnets },
         });
+        
         // Allow access Security Group 
         interfaceEndpoint.connections.allowDefaultPortFromAnyIpv4('Allow inbound from VPC');
         // Allow all TCP ports
         interfaceEndpoint.connections.securityGroups.forEach(sg => {
           sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTcp(), 'Allow all TCP ports');
         });
-
         // output Endpoint DNS name
         new cdk.CfnOutput(this, 'InterfaceEndpointDns', {
           value: cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries),
         });
 
+
+        // ----------------------- NLB ----------------------- //
+        // create and shared internal NLB
+        this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
+            vpc: this.vpc,
+            internetFacing: false, // internal NLB
+            vpcSubnets: { subnets: [this.subnets[0]] },
+            crossZoneEnabled: true,
+        });
+        this.nlbDnsName = this.linkednlb.loadBalancerDnsName;
+        this.loadBalancerArn = this.linkednlb.loadBalancerArn;
+
+        // ----------------------- Endpoint Service ----------------------- //
+        // create Private endpoint service
+        const endpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
+            networkLoadBalancerArns: [this.linkednlb.loadBalancerArn],
+            acceptanceRequired: false, // auto authentification
+        });
+        this.endpointServiceId = endpointService.ref;
         
+
+        // ------------------------ VPC Endpoints ----------------------- //
+        // Create Security Group for VPC endpoints
+        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: true,
+            description: 'Allow ECS tasks to access VPC endpoints',
+        });
+
+        // Allow access Security Group
+        endpointSecurityGroup.addIngressRule(
+            ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+            ec2.Port.tcp(443),
+            'Allow HTTPS from within the VPC'
+        );
+  
+        this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
+            service: ec2.InterfaceVpcEndpointAwsService.ECR,
+            privateDnsEnabled: true,
+            subnets: { subnets: this.subnets },
+            securityGroups: [endpointSecurityGroup],
+        });
+
 
         // ----------------------- App server EC2 ----------------------- //
         // Allow access Security Group 
@@ -101,5 +148,23 @@ export class LinkedInfraStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'ConfigServerDNS', {
             value: instance.instancePublicDnsName,
         });
+
+
+        // ----------------------- SSM params ----------------------- //
+        [
+          ['/linked/infra/vpc/id',this.vpc.vpcId],
+          ['/linked/infra/nlb/dns',this.nlbDnsName],
+          ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
+          ['/linked/infra/endpoint-service/id',this.endpointServiceId],
+          ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
+          ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
+        ].forEach(([param, val])=>
+          new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
+        );
+        
+        // ----------------------- Outputs ----------------------- //
+        new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
+        new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
+        new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn'});
     }
 }
