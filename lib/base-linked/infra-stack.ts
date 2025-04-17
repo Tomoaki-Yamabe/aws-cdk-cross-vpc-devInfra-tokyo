@@ -48,11 +48,17 @@ export class LinkedInfraStack extends cdk.Stack {
         });
         // Allow access Security Group 
         interfaceEndpoint.connections.allowDefaultPortFromAnyIpv4('Allow inbound from VPC');
+        // Allow all TCP ports
+        interfaceEndpoint.connections.securityGroups.forEach(sg => {
+          sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTcp(), 'Allow all TCP ports');
+        });
+
         // output Endpoint DNS name
         new cdk.CfnOutput(this, 'InterfaceEndpointDns', {
           value: cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries),
         });
 
+        
 
         // ----------------------- App server EC2 ----------------------- //
         // Allow access Security Group 
