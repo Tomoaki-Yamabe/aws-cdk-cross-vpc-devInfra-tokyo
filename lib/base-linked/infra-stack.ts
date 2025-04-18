@@ -164,7 +164,7 @@ export class LinkedInfraStack extends cdk.Stack {
         
         // ----------------------- Outputs ----------------------- //
         new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
-        new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId });
-        new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn'});
+        new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
+        new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
     }
 }
