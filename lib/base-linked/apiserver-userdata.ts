@@ -6,18 +6,13 @@ yum install -y python3 git
 # Install FastAPI, uvicorn and boto3
 pip3 install fastapi "uvicorn[standard]" boto3
 
-# Ensure /usr/local/bin is in PATH
-export PATH=$PATH:/root/.local/bin
-
-# Set capability to allow uvicorn to use port 80
-setcap 'cap_net_bind_service=+ep' $(which uvicorn)
-
 # Create application source in /root
 cat <<'EOF' > /root/config_server.py
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 import boto3
 import json
+import uvicorn
 
 app = FastAPI()
 ssm = boto3.client('ssm', region_name='us-west-2')
@@ -96,11 +91,14 @@ def get_service_config(service_name: str):
         return json.loads(response['Parameter']['Value'])
     except Exception as e:
         return {"error": str(e)}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080)
 EOF
 
 # Navigate to application directory
 cd /root
 
-# Start FastAPI explicitly using absolute path
-nohup ~/.local/bin/uvicorn config_server:app --host 0.0.0.0 --port 80 > /root/config_server.log 2>&1 &
+# Start FastAPI using Python (no need for uvicorn command directly)
+nohup python3 /root/config_server.py > /root/config_server.log 2>&1 &
 `;
