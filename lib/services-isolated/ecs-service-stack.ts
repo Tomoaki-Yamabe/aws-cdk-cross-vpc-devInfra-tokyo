@@ -47,7 +47,7 @@ export class EcsServiceStack extends cdk.Stack {
 
     // inport ECR repository and defenition container
     const ecrRepo = ecr.Repository.fromRepositoryName(this, 'EcrRepo', props.ecrRepoName);
-    taskDef.addContainer('AppContainer', {
+    taskDef.addContainer('AppContainer', {  
       image: ecs.ContainerImage.fromEcrRepository(ecrRepo, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: props.serviceName }),
       portMappings: [{ containerPort: props.containerPort }],
@@ -120,7 +120,7 @@ export class EcsServiceStack extends cdk.Stack {
       stageName: 'Deploy',
       actions: [
         new actions.EcsDeployAction({
-          actionName: 'DeployAction',
+          actionName: 'BlueGreen-DeployECS',
           service,
           input: sourceOutput,
         }),

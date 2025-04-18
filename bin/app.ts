@@ -43,13 +43,13 @@ const services = [
     serviceName: 'chatbot-service',
   },
   {
-    id: 'BlablaService',
-    ecrRepoName: 'bedrock/sils-chatbot',
-    containerPort: 8501,
+    id: 'GetS3dataService',
+    ecrRepoName: 'xils-backend-s3control',
+    containerPort: 8000,
     listenerPort: 50001,
     memoryLimitMiB: 1024,
     cpu: 512,
-    serviceName: 'takos-service',
+    serviceName: 'gets3data-service',
   },
 ];
 
@@ -57,6 +57,7 @@ for (const svc of services) {
   new EcsServiceStack(app, `SILS-APP-${svc.id}`, {
     env,
     loadBalancerArn: infraStack.loadBalancerArn,
+    loadBalancerDnsName : infraStack.nlbDnsName,
     cluster: infraStack.cluster,
     vpc: infraStack.vpc,
     ...svc,
