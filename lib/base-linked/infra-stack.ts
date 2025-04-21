@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import { configServerUserData } from './apiserver-userdata';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
@@ -20,151 +21,170 @@ export class LinkedInfraStack extends cdk.Stack {
     public readonly loadBalancerArn: string;
 
     constructor(scope: Construct, id: string, props: LinkedVpcStackProps) {
-        super(scope, id, props);
+      super(scope, id, props);
 
-        cdk.Tags.of(this).add('Project', 'EliteGen2');
-        cdk.Tags.of(this).add('Environment', 'Production');
-        cdk.Tags.of(this).add('OwnedBy', 'SILS');
-        cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
+      cdk.Tags.of(this).add('Project', 'EliteGen2');
+      cdk.Tags.of(this).add('Environment', 'Production');
+      cdk.Tags.of(this).add('OwnedBy', 'SILS');
+      cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
-        this.vpc = ec2.Vpc.fromLookup(this, 'LinkedVpc', {
-          vpcId: props.vpcId,
-        });
+      this.vpc = ec2.Vpc.fromLookup(this, 'LinkedVpc', {
+        vpcId: props.vpcId,
+      });
 
-        const azs = cdk.Stack.of(this).availabilityZones;
-        this.subnets = props.subnetIds.map((subnetId, index) =>
-          ec2.Subnet.fromSubnetAttributes(this, `LinkedSubnet${index}`, {
-            subnetId,
-            availabilityZone: azs[index % azs.length],
-          })
-        );
+      const azs = cdk.Stack.of(this).availabilityZones;
+      this.subnets = props.subnetIds.map((subnetId, index) =>
+        ec2.Subnet.fromSubnetAttributes(this, `LinkedSubnet${index}`, {
+          subnetId,
+          availabilityZone: azs[index % azs.length],
+        })
+      );
 
 
-        // ----------------------- Private Link Attachment ----------------------- //
-        // Connection Linked to Isolated VPC endpoint
-        const endpointServiceName = ssm.StringParameter.valueForStringParameter(
-          this, '/isolated/infra/endpoint-service/name'
-        );
-        const interfaceEndpoint = new ec2.InterfaceVpcEndpoint(this, 'ServiceInterfaceEndpoint', {
+      // ----------------------- Private Link Attachment ----------------------- //
+      // Connection Linked to Isolated VPC endpoint
+      const endpointServiceName = ssm.StringParameter.valueForStringParameter(
+        this, '/isolated/infra/endpoint-service/name'
+      );
+      const interfaceEndpoint = new ec2.InterfaceVpcEndpoint(this, 'ServiceInterfaceEndpoint', {
+        vpc: this.vpc,
+        service: new ec2.InterfaceVpcEndpointService(endpointServiceName, 80),
+        privateDnsEnabled: false,
+        subnets: { subnets: this.subnets },
+      });
+      
+      // Allow access Security Group 
+      interfaceEndpoint.connections.allowDefaultPortFromAnyIpv4('Allow inbound from VPC');
+      // Allow all TCP ports
+      interfaceEndpoint.connections.securityGroups.forEach(sg => {
+        sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTcp(), 'Allow all TCP ports');
+      });
+      // output Endpoint DNS name
+      new cdk.CfnOutput(this, 'InterfaceEndpointDns', {
+        value: cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries),
+      });
+
+
+      // ----------------------- NLB ----------------------- //
+      // create and shared internal NLB
+      this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
           vpc: this.vpc,
-          service: new ec2.InterfaceVpcEndpointService(endpointServiceName, 80),
-          privateDnsEnabled: false,
-          subnets: { subnets: this.subnets },
-        });
-        
-        // Allow access Security Group 
-        interfaceEndpoint.connections.allowDefaultPortFromAnyIpv4('Allow inbound from VPC');
-        // Allow all TCP ports
-        interfaceEndpoint.connections.securityGroups.forEach(sg => {
-          sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTcp(), 'Allow all TCP ports');
-        });
-        // output Endpoint DNS name
-        new cdk.CfnOutput(this, 'InterfaceEndpointDns', {
-          value: cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries),
-        });
+          internetFacing: false, // internal NLB
+          vpcSubnets: { subnets: [ this.subnets[0] ] },
+          crossZoneEnabled: true,
+      });
+      this.nlbDnsName = this.linkednlb.loadBalancerDnsName;
+      this.loadBalancerArn = this.linkednlb.loadBalancerArn;
 
+      // ----------------------- Endpoint Service ----------------------- //
+      // create Private endpoint service
+      const endpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
+          networkLoadBalancerArns: [this.linkednlb.loadBalancerArn],
+          acceptanceRequired: false, // auto authentification
+      });
+      this.endpointServiceId = endpointService.ref;
+      
 
-        // ----------------------- NLB ----------------------- //
-        // create and shared internal NLB
-        this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
-            vpc: this.vpc,
-            internetFacing: false, // internal NLB
-            vpcSubnets: { subnets: [this.subnets[0]] },
-            crossZoneEnabled: true,
-        });
-        this.nlbDnsName = this.linkednlb.loadBalancerDnsName;
-        this.loadBalancerArn = this.linkednlb.loadBalancerArn;
-
-        // ----------------------- Endpoint Service ----------------------- //
-        // create Private endpoint service
-        const endpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
-            networkLoadBalancerArns: [this.linkednlb.loadBalancerArn],
-            acceptanceRequired: false, // auto authentification
-        });
-        this.endpointServiceId = endpointService.ref;
-        
-
-        // ------------------------ VPC Endpoints ----------------------- //
-        // Create Security Group for VPC endpoints
-        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
-            vpc: this.vpc,
-            allowAllOutbound: true,
-            description: 'Allow ECS tasks to access VPC endpoints',
-        });
-
-        // Allow access Security Group
-        endpointSecurityGroup.addIngressRule(
-            ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
-            ec2.Port.tcp(443),
-            'Allow HTTPS from within the VPC'
-        );
-  
-        this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECR,
-            privateDnsEnabled: true,
-            subnets: { subnets: this.subnets },
-            securityGroups: [endpointSecurityGroup],
-        });
-
-
-        // ----------------------- App server EC2 ----------------------- //
-        // Allow access Security Group 
-        const sg = new ec2.SecurityGroup(this, 'ConfigServerSG', {
+      // ------------------------ VPC Endpoints ----------------------- //
+      // Create Security Group for VPC endpoints
+      const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
           vpc: this.vpc,
-          description: 'Allow access to the config server',
           allowAllOutbound: true,
-        });
-        
-        sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP');
-        sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH');
-        sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.icmpPing(), 'Allow ICMP Ping');
+          description: 'Allow ECS tasks to access VPC endpoints',
+      });
+
+      // Allow access Security Group
+      endpointSecurityGroup.addIngressRule(
+          ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+          ec2.Port.allTcp(),
+          'Allow HTTPS from within the VPC'
+      );
+
+      this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
+          service: ec2.InterfaceVpcEndpointAwsService.ECR,
+          privateDnsEnabled: true,
+          subnets: { subnets: this.subnets },
+          securityGroups: [endpointSecurityGroup],
+      });
 
 
-        const role = new iam.Role(this, 'EC2InstanceRole', {
-            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-        });
+      // ------------------------- Gateway ASG ----------------------- //
 
-        role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMReadOnlyAccess'));
+      // API and Gateway server
+      const DEFAULT_PORT = 80;
+      const LINKED_PORT  = 8080;
 
-        const selectedAz = cdk.Stack.of(this).availabilityZones[0];
-        const selectedSubnet = ec2.Subnet.fromSubnetAttributes(this, 'SelectedSubnet', {
-          subnetId: props.subnetIds[0],
-          availabilityZone: selectedAz,
-        });
-        const instance = new ec2.Instance(this, 'ConfigServerInstance', {
-            vpc: this.vpc,
-            instanceType: new ec2.InstanceType('t3.micro'),
-            machineImage: new ec2.AmazonLinuxImage({
-              generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-            }),            
-            securityGroup: sg,
-            vpcSubnets: { subnets: [selectedSubnet] },
-            keyName: 'xils-developper',
-            role,
-        });
+      const asgRole = new iam.Role(this, 'GatewayASGRole', {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      });
+      asgRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+      asgRole.addToPolicy(new iam.PolicyStatement({
+        actions: ["ssm:DescribeParameters"],
+        resources: ["*"],
+      }));
 
-        instance.addUserData(configServerUserData);
+      const gatewaySecurityGroup = new ec2.SecurityGroup(this, 'GatewaySG', {
+        vpc: this.vpc,
+        allowAllOutbound: true,
+        description: 'Allow traffic on port LINKED_PORT',
+      });
+      gatewaySecurityGroup.addIngressRule(
+        ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+        ec2.Port.allTcp(),
+        'Allow internal traffic from NLB'
+      );
 
-        new cdk.CfnOutput(this, 'ConfigServerDNS', {
-            value: instance.instancePublicDnsName,
-        });
+      const keyPair = ec2.KeyPair.fromKeyPairName(this, 'KeyPair', 'xils-developper');
 
+      const launchTemplate = new ec2.LaunchTemplate(this, 'GatewayLaunchTemplate', {
+        machineImage: ec2.MachineImage.latestAmazonLinux2(),
+        instanceType: new ec2.InstanceType('t3.micro'),
+        keyPair,
+        role: asgRole,
+        securityGroup: gatewaySecurityGroup,
+        userData: ec2.UserData.custom(configServerUserData),
+      });
 
-        // ----------------------- SSM params ----------------------- //
-        [
-          ['/linked/infra/vpc/id',this.vpc.vpcId],
-          ['/linked/infra/nlb/dns',this.nlbDnsName],
-          ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
-          ['/linked/infra/endpoint-service/id',this.endpointServiceId],
-          ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
-          ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
-        ].forEach(([param, val])=>
-          new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
-        );
-        
-        // ----------------------- Outputs ----------------------- //
-        new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
-        new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
-        new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
+      const asg = new autoscaling.AutoScalingGroup(this, 'GatewayASG', {
+        vpc: this.vpc,
+        vpcSubnets: { subnets: this.subnets },
+        minCapacity: 1,
+        maxCapacity: 1,
+        desiredCapacity: 1,
+        launchTemplate,
+      });
+
+      const gatewayListener = this.linkednlb.addListener('GatewayListener', {
+        port: DEFAULT_PORT,
+        protocol: elbv2.Protocol.TCP,
+      });
+
+      gatewayListener.addTargets('GatewayTargets', {
+        port: LINKED_PORT,
+        targets: [asg],
+        protocol: elbv2.Protocol.TCP,
+        healthCheck: {
+          port: 'traffic-port',
+          protocol: elbv2.Protocol.TCP,
+        },
+      });
+
+      
+      // ----------------------- SSM params ----------------------- //
+      [
+        ['/linked/infra/vpc/id',this.vpc.vpcId],
+        ['/linked/infra/nlb/dns',this.nlbDnsName],
+        ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
+        ['/linked/infra/endpoint-service/id',this.endpointServiceId],
+        ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
+        ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
+      ].forEach(([param, val])=>
+        new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
+      );
+      
+      // ----------------------- Outputs ----------------------- //
+      new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
+      new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
+      new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
     }
 }
