@@ -11,6 +11,7 @@ import * as actions from 'aws-cdk-lib/aws-codepipeline-actions';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
   loadBalancerArn: string;
+  loadBalancerDnsName: string;
   cluster: ecs.Cluster;
   vpc: ec2.IVpc;
   listenerPort: number;
@@ -127,12 +128,17 @@ export class EcsServiceStack extends cdk.Stack {
       ],
     });
 
+    const endpointDns = ssm.StringParameter.valueForStringParameter(
+      this,
+      '/linked/infra/endpoint-service/endpoint-dns'
+    );
+
     // output ssm parameter
     new ssm.StringParameter(this, `${props.serviceName}ConfigParameter`, {
       parameterName: `/services/${props.serviceName}/config`,
       stringValue: JSON.stringify({
         serviceName: props.serviceName,
-        nlbDnsName: importedNlb.loadBalancerDnsName,
+        nlbDnsName: endpointDns,
         listenerPort: props.listenerPort,
         targetPort: props.containerPort,
       }),

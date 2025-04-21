@@ -19,6 +19,7 @@ export class LinkedInfraStack extends cdk.Stack {
     public readonly nlbDnsName: string;
     public readonly endpointServiceId: string;
     public readonly loadBalancerArn: string;
+    public readonly endpointDns: string;
 
     constructor(scope: Construct, id: string, props: LinkedVpcStackProps) {
       super(scope, id, props);
@@ -59,10 +60,15 @@ export class LinkedInfraStack extends cdk.Stack {
       interfaceEndpoint.connections.securityGroups.forEach(sg => {
         sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTcp(), 'Allow all TCP ports');
       });
-      // output Endpoint DNS name
-      new cdk.CfnOutput(this, 'InterfaceEndpointDns', {
-        value: cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries),
-      });
+
+      // this.endpointDns = cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries); HostedZoneId:Route53で使うようなDNS名が入ってしまうのでだめ
+      this.endpointDns = cdk.Fn.select(
+        1,
+        cdk.Fn.split(
+          ':',
+          cdk.Fn.select(0, interfaceEndpoint.vpcEndpointDnsEntries)
+        )
+      );     
 
 
       // ----------------------- NLB ----------------------- //
@@ -117,7 +123,9 @@ export class LinkedInfraStack extends cdk.Stack {
       const asgRole = new iam.Role(this, 'GatewayASGRole', {
         assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       });
+      
       asgRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+      asgRole.addManagedPolicy( iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMReadOnlyAccess'));
       asgRole.addToPolicy(new iam.PolicyStatement({
         actions: ["ssm:DescribeParameters"],
         resources: ["*"],
@@ -178,6 +186,7 @@ export class LinkedInfraStack extends cdk.Stack {
         ['/linked/infra/endpoint-service/id',this.endpointServiceId],
         ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
         ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
+        ['/linked/infra/endpoint-service/endpoint-dns',this.endpointDns],
       ].forEach(([param, val])=>
         new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
       );
@@ -186,5 +195,6 @@ export class LinkedInfraStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
       new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
       new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
+      new cdk.CfnOutput(this, 'InterfaceEndpointDns', { value: this.endpointDns });
     }
 }
