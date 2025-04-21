@@ -43,7 +43,7 @@ const services = [
     serviceName: 'chatbot-service',
   },
   {
-    id: 'GetS3dataService',
+    id: 'S3Control',
     ecrRepoName: 'xils-backend-s3control',
     containerPort: 8000,
     listenerPort: 50001,
