@@ -51,6 +51,25 @@ const services = [
     cpu: 512,
     serviceName: 'gets3data-service',
   },
+  {
+    id: 'EC2Control',
+    ecrRepoName: 'xils-controlec2',
+    containerPort: 5000,
+    listenerPort: 50002,
+    memoryLimitMiB: 1024,
+    cpu: 512,
+    serviceName: 'ec2control-service',
+  },
+  {
+    id: 'Dorawio',
+    ecrRepoName: 'xils-backend-drawio',
+    containerPort: 8080,
+    listenerPort: 50003,
+    memoryLimitMiB: 1024,
+    cpu: 512,
+    serviceName: 'drawio-service',
+  },
+  
 ];
 
 for (const svc of services) {
