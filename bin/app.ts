@@ -69,6 +69,16 @@ const services = [
     cpu: 512,
     serviceName: 'drawio-service',
   },
+  {
+    id: 'EC2Control-IAP',
+    ecrRepoName: 'xils-backend-iap-controlec2',
+    containerPort: 5000,
+    listenerPort: 50004,
+    memoryLimitMiB: 1024,
+    cpu: 512,
+    serviceName: 'ec2control-service-IAP',
+  },
+
   
 ];
 

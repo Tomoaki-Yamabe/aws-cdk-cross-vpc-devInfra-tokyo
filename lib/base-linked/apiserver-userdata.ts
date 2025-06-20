@@ -54,6 +54,16 @@ async def root():
         name = s.get("serviceName")
         html += f'<li>{name} — <a href="/docs/{name}">Microservice API from Swagger UI</a></li>'
     html += "</ul></body></html>"
+
+    gitlab = ssm.get_parameter(Name='/onprem/as4-gitlab/endpoint')['Parameter']['Value']
+    license = ssm.get_parameter(Name='/onprem/silver-license/endpoint')['Parameter']['Value']
+    html += f"""
+      <h2>On-Prem Services</h2>
+      <ul>
+        <li>GitLab API: {gitlab}</li>
+        <li>License Server: {license}</li>
+      </ul>
+    """
     return HTMLResponse(html)
 
 
