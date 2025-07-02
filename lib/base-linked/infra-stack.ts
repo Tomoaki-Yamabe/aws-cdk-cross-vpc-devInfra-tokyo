@@ -170,60 +170,61 @@ export class LinkedInfraStack extends cdk.Stack {
         launchTemplate,
       });
 
-      const gatewayListener = this.linkednlb.addListener('GatewayListener', {
-        port: DEFAULT_PORT,
-        protocol: elbv2.Protocol.TCP,
-      });
+      // NLBリスナーの作成を一時的にコメントアウト（既存NLBとの競合回避のため）
+      // const gatewayListener = this.linkednlb.addListener('GatewayListener', {
+      //   port: DEFAULT_PORT,
+      //   protocol: elbv2.Protocol.TCP,
+      // });
 
-      gatewayListener.addTargets('GatewayTargets', {
-        port: LINKED_PORT,
-        targets: [asg],
-        protocol: elbv2.Protocol.TCP,
-        healthCheck: {
-          port: 'traffic-port',
-          protocol: elbv2.Protocol.TCP,
-        },
-      });
+      // gatewayListener.addTargets('GatewayTargets', {
+      //   port: LINKED_PORT,
+      //   targets: [asg],
+      //   protocol: elbv2.Protocol.TCP,
+      //   healthCheck: {
+      //     port: 'traffic-port',
+      //     protocol: elbv2.Protocol.TCP,
+      //   },
+      // });
 
 
       // ------------------------- OnPrem GitLab ----------------------- //
-      const ONPREM_AS4_GITLAB_IP   = '10.0.0.100';
-      const ONPREM_AS4_GITLAB_PORT = 8443;
-      const AS4_GITLAB_LISTENER_PORT = 60000;
+      // const ONPREM_AS4_GITLAB_IP   = '10.0.0.100';
+      // const ONPREM_AS4_GITLAB_PORT = 8443;
+      // const AS4_GITLAB_LISTENER_PORT = 60000;
 
-      const gitlabListener = this.linkednlb.addListener('GitLabListener', {
-        port: AS4_GITLAB_LISTENER_PORT,
-        protocol: elbv2.Protocol.TCP,
-      });
-      gitlabListener.addTargets('GitLabTargets', {
-        port: ONPREM_AS4_GITLAB_PORT,
-        protocol: elbv2.Protocol.TCP,
-        targets: [new IpTarget(ONPREM_AS4_GITLAB_IP, ONPREM_AS4_GITLAB_PORT, azs[0])],
-        healthCheck: {
-          port: `${ONPREM_AS4_GITLAB_PORT}`,
-          protocol: elbv2.Protocol.TCP,
-        },
-      });
+      // const gitlabListener = this.linkednlb.addListener('GitLabListener', {
+      //   port: AS4_GITLAB_LISTENER_PORT,
+      //   protocol: elbv2.Protocol.TCP,
+      // });
+      // gitlabListener.addTargets('GitLabTargets', {
+      //   port: ONPREM_AS4_GITLAB_PORT,
+      //   protocol: elbv2.Protocol.TCP,
+      //   targets: [new IpTarget(ONPREM_AS4_GITLAB_IP, ONPREM_AS4_GITLAB_PORT, azs[0])],
+      //   healthCheck: {
+      //     port: `${ONPREM_AS4_GITLAB_PORT}`,
+      //     protocol: elbv2.Protocol.TCP,
+      //   },
+      // });
 
 
       // ------------------------- OnPrem SilverLicense ----------------------- //
-      const ONPREM_SILVER_LICENSE_IP   = '10.0.0.200';
-      const ONPREM_SILVER_LICENSE_PORT = 27000;
-      const SILVER_LICENSE_LISTENER_PORT = 60001;
+      // const ONPREM_SILVER_LICENSE_IP   = '10.0.0.200';
+      // const ONPREM_SILVER_LICENSE_PORT = 27000;
+      // const SILVER_LICENSE_LISTENER_PORT = 60001;
 
-      const licenseListener = this.linkednlb.addListener('LicenseListener', {
-        port: SILVER_LICENSE_LISTENER_PORT,
-        protocol: elbv2.Protocol.TCP,
-      });
-      licenseListener.addTargets('LicenseTargets', {
-        port: ONPREM_SILVER_LICENSE_PORT,
-        protocol: elbv2.Protocol.TCP,
-        targets: [new IpTarget(ONPREM_SILVER_LICENSE_IP, ONPREM_SILVER_LICENSE_PORT, azs[0])],
-        healthCheck: {
-          port: `${ONPREM_SILVER_LICENSE_PORT}`,
-          protocol: elbv2.Protocol.TCP,
-        },
-      });
+      // const licenseListener = this.linkednlb.addListener('LicenseListener', {
+      //   port: SILVER_LICENSE_LISTENER_PORT,
+      //   protocol: elbv2.Protocol.TCP,
+      // });
+      // licenseListener.addTargets('LicenseTargets', {
+      //   port: ONPREM_SILVER_LICENSE_PORT,
+      //   protocol: elbv2.Protocol.TCP,
+      //   targets: [new IpTarget(ONPREM_SILVER_LICENSE_IP, ONPREM_SILVER_LICENSE_PORT, azs[0])],
+      //   healthCheck: {
+      //     port: `${ONPREM_SILVER_LICENSE_PORT}`,
+      //     protocol: elbv2.Protocol.TCP,
+      //   },
+      // });
 
       
       // ----------------------- SSM params ----------------------- //
@@ -232,8 +233,9 @@ export class LinkedInfraStack extends cdk.Stack {
         ['/linked/infra/nlb/dns',this.nlbDnsName],
         ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
         ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
-        ['/onprem/as4-gitlab/endpoint', `${this.linkednlb.loadBalancerDnsName}:${AS4_GITLAB_LISTENER_PORT}`],
-        ['/onprem/silver-license/endpoint', `${this.linkednlb.loadBalancerDnsName}:${SILVER_LICENSE_LISTENER_PORT}`],
+        // OnPremエンドポイントは一時的にコメントアウト（NLBリスナー未作成のため）
+        // ['/onprem/as4-gitlab/endpoint', `${this.linkednlb.loadBalancerDnsName}:${AS4_GITLAB_LISTENER_PORT}`],
+        // ['/onprem/silver-license/endpoint', `${this.linkednlb.loadBalancerDnsName}:${SILVER_LICENSE_LISTENER_PORT}`],
         // ['/linked/infra/endpoint-service/id',this.endpointServiceId],
         // ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
         // ['/linked/infra/endpoint-service/endpoint-dns',this.endpointDns],

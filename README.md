@@ -13,8 +13,11 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 * `npx cdk diff`    compare deployed stack with current state
 * `npx cdk synth`   emits the synthesized CloudFormation template
 
-## how to setup
-```bash
-npm install
-cdk bootstrap # just firsttime
+## how to dev
+
+```sh
+npm install --save-dev typescript
+npm run build
+cdk synth
+cdk deploy
 ```
