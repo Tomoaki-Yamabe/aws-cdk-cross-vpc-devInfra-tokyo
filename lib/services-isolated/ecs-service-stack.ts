@@ -128,17 +128,18 @@ export class EcsServiceStack extends cdk.Stack {
       ],
     });
 
-    const endpointDns = ssm.StringParameter.valueForStringParameter(
-      this,
-      '/linked/infra/endpoint-service/endpoint-dns'
-    );
+    // LinkedVPCへのPrivateLink接続は後で設定（一時的にコメントアウト）
+    // const endpointDns = ssm.StringParameter.valueForStringParameter(
+    //   this,
+    //   '/linked/infra/endpoint-service/endpoint-dns'
+    // );
 
     // output ssm parameter
     new ssm.StringParameter(this, `${props.serviceName}ConfigParameter`, {
       parameterName: `/services/${props.serviceName}/config`,
       stringValue: JSON.stringify({
         serviceName: props.serviceName,
-        nlbDnsName: endpointDns,
+        nlbDnsName: props.loadBalancerDnsName, // 一時的にIsolated側のNLB DNS名を使用
         listenerPort: props.listenerPort,
         targetPort: props.containerPort,
       }),
