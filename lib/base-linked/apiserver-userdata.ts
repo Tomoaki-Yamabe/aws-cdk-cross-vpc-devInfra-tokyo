@@ -14,7 +14,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 import boto3, httpx, json
 
 app = FastAPI(title="Gateway API", docs_url=None, redoc_url=None)
-ssm = boto3.client('ssm', region_name='us-west-2')
+ssm = boto3.client('ssm', region_name='ap-northeast-1')
 
 # Get all service configurations from SSM Parameter Store
 def list_service_configs():

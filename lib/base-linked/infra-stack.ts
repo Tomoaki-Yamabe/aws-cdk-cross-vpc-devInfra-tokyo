@@ -11,12 +11,13 @@ import { IpTarget } from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 interface LinkedVpcStackProps extends cdk.StackProps {
   vpcId: string;
   subnetIds: string[];
+  endpointServiceName: string; 
 }
 
 export class LinkedInfraStack extends cdk.Stack {
     public readonly vpc: ec2.IVpc;
     public readonly subnets: ec2.ISubnet[];
-    public readonly linkednlb: elbv2.NetworkLoadBalancer;
+    public readonly linkednlb: elbv2.INetworkLoadBalancer;
     public readonly nlbDnsName: string;
     public readonly endpointServiceId: string;
     public readonly loadBalancerArn: string;
@@ -27,7 +28,7 @@ export class LinkedInfraStack extends cdk.Stack {
 
       cdk.Tags.of(this).add('Project', 'EliteGen2');
       cdk.Tags.of(this).add('Environment', 'Production');
-      cdk.Tags.of(this).add('OwnedBy', 'SILS');
+      cdk.Tags.of(this).add('OwnedBy', 'YAMABE');
       cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
       this.vpc = ec2.Vpc.fromLookup(this, 'LinkedVpc', {
@@ -46,8 +47,8 @@ export class LinkedInfraStack extends cdk.Stack {
       // ----------------------- Private Link Attachment ----------------------- //
       // Connection Linked to Isolated VPC endpoint
       const endpointServiceName = ssm.StringParameter.valueForStringParameter(
-        this, '/isolated/infra/endpoint-service/name'
-      );
+        this, props.endpointServiceName
+      ); 
       const interfaceEndpoint = new ec2.InterfaceVpcEndpoint(this, 'ServiceInterfaceEndpoint', {
         vpc: this.vpc,
         service: new ec2.InterfaceVpcEndpointService(endpointServiceName, 80),
@@ -73,49 +74,55 @@ export class LinkedInfraStack extends cdk.Stack {
 
 
       // ----------------------- NLB ----------------------- //
-      // create and shared internal NLB
-      this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
-          vpc: this.vpc,
-          internetFacing: false, // internal NLB
-          vpcSubnets: { subnets: [ this.subnets[0] ] },
-          crossZoneEnabled: true,
+
+      this.linkednlb = elbv2.NetworkLoadBalancer.fromLookup(this, 'ExistingNLB', {
+        loadBalancerArn: 'arn:aws:elasticloadbalancing:ap-northeast-1:481393820746:loadbalancer/net/sils-isolated2Linked-NLB-MILS/53156c35fcc0e3c5',
       });
+
+      // // create and shared internal NLB
+      // this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
+      //     vpc: this.vpc,
+      //     internetFacing: false, // internal NLB
+      //     vpcSubnets: { subnets: [ this.subnets[0] ] },
+      //     crossZoneEnabled: true,
+      // });
       this.nlbDnsName = this.linkednlb.loadBalancerDnsName;
       this.loadBalancerArn = this.linkednlb.loadBalancerArn;
 
       // ----------------------- Endpoint Service ----------------------- //
       // create Private endpoint service
-      const endpointService = new ec2.CfnVPCEndpointService(this, 'EndpointService', {
-          networkLoadBalancerArns: [this.linkednlb.loadBalancerArn],
-          acceptanceRequired: false, // auto authentification
-      });
-      this.endpointServiceId = endpointService.ref;
+      // const endpointService = new ec2.CfnVPCEndpointService(this, 'PriLink-EndpointService', {
+      //     networkLoadBalancerArns: [this.linkednlb.loadBalancerArn],
+      //     acceptanceRequired: false, // auto authentification
+      // });
+      // this.endpointServiceId = endpointService.ref;
+
       
 
       // ------------------------ VPC Endpoints ----------------------- //
       // Create Security Group for VPC endpoints
-      const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
-          vpc: this.vpc,
-          allowAllOutbound: true,
-          description: 'Allow ECS tasks to access VPC endpoints',
-      });
+      // const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
+      //     vpc: this.vpc,
+      //     allowAllOutbound: true,
+      //     description: 'Allow ECS tasks to access VPC endpoints',
+      // });
 
-      // Allow access Security Group
-      endpointSecurityGroup.addIngressRule(
-          ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
-          ec2.Port.allTcp(),
-          'Allow HTTPS from within the VPC'
-      );
+      // // Allow access Security Group
+      // endpointSecurityGroup.addIngressRule(
+      //     ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+      //     ec2.Port.allTcp(),
+      //     'Allow HTTPS from within the VPC'
+      // );
 
-      this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
-          service: ec2.InterfaceVpcEndpointAwsService.ECR,
-          privateDnsEnabled: true,
-          subnets: { subnets: this.subnets },
-          securityGroups: [endpointSecurityGroup],
-      });
+      // this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
+      //     service: ec2.InterfaceVpcEndpointAwsService.ECR,
+      //     privateDnsEnabled: true,
+      //     subnets: { subnets: this.subnets },
+      //     securityGroups: [endpointSecurityGroup],
+      // });
 
 
-      // ------------------------- Gateway ASG ----------------------- //
+      // ------------------------- Gateway Server ASG ----------------------- //
 
       // API and Gateway server
       const DEFAULT_PORT = 80;
@@ -143,7 +150,7 @@ export class LinkedInfraStack extends cdk.Stack {
         'Allow internal traffic from NLB'
       );
 
-      const keyPair = ec2.KeyPair.fromKeyPairName(this, 'KeyPair', 'xils-developper');
+      const keyPair = ec2.KeyPair.fromKeyPairName(this, 'KeyPair', 'tom');
 
       const launchTemplate = new ec2.LaunchTemplate(this, 'GatewayLaunchTemplate', {
         machineImage: ec2.MachineImage.latestAmazonLinux2(),
@@ -202,7 +209,7 @@ export class LinkedInfraStack extends cdk.Stack {
       // ------------------------- OnPrem SilverLicense ----------------------- //
       const ONPREM_SILVER_LICENSE_IP   = '10.0.0.200';
       const ONPREM_SILVER_LICENSE_PORT = 27000;
-      const SILVER_LICENSE_LISTENER_PORT = 27000;
+      const SILVER_LICENSE_LISTENER_PORT = 60001;
 
       const licenseListener = this.linkednlb.addListener('LicenseListener', {
         port: SILVER_LICENSE_LISTENER_PORT,
@@ -224,20 +231,20 @@ export class LinkedInfraStack extends cdk.Stack {
         ['/linked/infra/vpc/id',this.vpc.vpcId],
         ['/linked/infra/nlb/dns',this.nlbDnsName],
         ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
-        ['/linked/infra/endpoint-service/id',this.endpointServiceId],
-        ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
         ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
-        ['/linked/infra/endpoint-service/endpoint-dns',this.endpointDns],
         ['/onprem/as4-gitlab/endpoint', `${this.linkednlb.loadBalancerDnsName}:${AS4_GITLAB_LISTENER_PORT}`],
         ['/onprem/silver-license/endpoint', `${this.linkednlb.loadBalancerDnsName}:${SILVER_LICENSE_LISTENER_PORT}`],
+        // ['/linked/infra/endpoint-service/id',this.endpointServiceId],
+        // ['/linked/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${endpointService.ref}`],
+        // ['/linked/infra/endpoint-service/endpoint-dns',this.endpointDns],
       ].forEach(([param, val])=>
         new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
       );
       
       // ----------------------- Outputs ----------------------- //
       new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
-      new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
+      // new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
       new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
-      new cdk.CfnOutput(this, 'InterfaceEndpointDns', { value: this.endpointDns });
+      // new cdk.CfnOutput(this, 'InterfaceEndpointDns', { value: this.endpointDns });
     }
 }

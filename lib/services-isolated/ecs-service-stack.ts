@@ -28,7 +28,7 @@ export class EcsServiceStack extends cdk.Stack {
 
     cdk.Tags.of(this).add('Project', 'EliteGen2');
     cdk.Tags.of(this).add('Environment', 'Production');
-    cdk.Tags.of(this).add('OwnedBy', 'SILS');
+    cdk.Tags.of(this).add('OwnedBy', 'YAMABE');
     cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {

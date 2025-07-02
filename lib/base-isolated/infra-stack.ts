@@ -24,7 +24,7 @@ export class IsolatedInfraStack extends cdk.Stack {
 
         cdk.Tags.of(this).add('Project', 'EliteGen2');
         cdk.Tags.of(this).add('Environment', 'Production');
-        cdk.Tags.of(this).add('OwnedBy', 'SILS');
+        cdk.Tags.of(this).add('OwnedBy', 'YAMABE');
         cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
         
@@ -40,25 +40,23 @@ export class IsolatedInfraStack extends cdk.Stack {
 
         // ----------------------- Private Link Attachment ----------------------- //
         // Connection Isolated to Linked VPC endpoint
-        const LinkedEndpointServiceName = ssm.StringParameter.valueForStringParameter(
-            this, '/linked/infra/endpoint-service/name'
-        );
+        // const LinkedEndpointServiceName = ssm.StringParameter.valueForStringParameter(
+        //     this, '/linked/infra/endpoint-service/name'
+        // );
 
-        const endpointSubnets = this.subnets.filter(subnet =>
-            subnet.subnetId === 'subnet-0ce0bc16b4054a9d7'
-        );
 
-        const linkSg = new ec2.SecurityGroup(this,'IsoToLinkSG',{ vpc:this.vpc, allowAllOutbound:true });
-        linkSg.addIngressRule(ec2.Peer.anyIpv4(),ec2.Port.allTcp(),'Allow all TCP ports');
-        const toLinkedEndpoint = this.vpc.addInterfaceEndpoint('ToLinkedEndpoint',{
-            service:new ec2.InterfaceVpcEndpointService(LinkedEndpointServiceName,80),
-            privateDnsEnabled:false,
-            subnets:{ subnets:endpointSubnets },
-            securityGroups:[linkSg],
-        });
-        new cdk.CfnOutput(this, 'ToLinkedDns', {
-            value: cdk.Fn.select(0, toLinkedEndpoint.vpcEndpointDnsEntries),
-        });
+
+        // const linkSg = new ec2.SecurityGroup(this,'IsoToLinkSG',{ vpc:this.vpc, allowAllOutbound:true });
+        // linkSg.addIngressRule(ec2.Peer.anyIpv4(),ec2.Port.allTcp(),'Allow all TCP ports');
+        // const toLinkedEndpoint = this.vpc.addInterfaceEndpoint('ToLinkedEndpoint',{
+        //     service:new ec2.InterfaceVpcEndpointService(LinkedEndpointServiceName,80),
+        //     privateDnsEnabled:false,
+        //     subnets:{ subnets: this.subnets },
+        //     securityGroups:[linkSg],
+        // });
+        // new cdk.CfnOutput(this, 'ToLinkedDns', {
+        //     value: cdk.Fn.select(0, toLinkedEndpoint.vpcEndpointDnsEntries),
+        // });
 
 
         // ----------------------- NLB ----------------------- //
@@ -98,65 +96,65 @@ export class IsolatedInfraStack extends cdk.Stack {
 
 
         // Create VPC endpoints for ECR and CloudWatch Logs
-        // const services: [string, ec2.InterfaceVpcEndpointAwsService][] = [
-        //     ['EcrApiEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR],
-        //     ['EcrDockerEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER],
-        //     ['CloudWatchLogsEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS],
-        // ];
-        // services.forEach(([id, svc]) => {
-        //     this.vpc.addInterfaceEndpoint(id, {
-        //         service: svc,
-        //         privateDnsEnabled: true,
-        //         subnets: { subnets: this.subnets },
-        //         securityGroups: [ecrSg],
-        //     });
+        const services: [string, ec2.InterfaceVpcEndpointAwsService][] = [
+            ['EcrApiEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR],
+            ['EcrDockerEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER],
+            ['CloudWatchLogsEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS],
+        ];
+        services.forEach(([id, svc]) => {
+            this.vpc.addInterfaceEndpoint(id, {
+                service: svc,
+                privateDnsEnabled: true,
+                subnets: { subnets: this.subnets },
+                securityGroups: [ecrSg],
+            });
+        });
+
+
+
+        // ----------------------- SSM params ----------------------- //
+        [
+            ['/isolated/infra/vpc/id',this.vpc.vpcId],
+            ['/isolated/infra/nlb/dns',this.nlbDnsName],
+            ['/isolated/infra/nlb/arn',this.loadBalancerArn],
+            ['/isolated/infra/endpoint-service/id',this.endpointServiceId],
+            ['/isolated/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${this.endpointServiceId}`],
+            ['/isolated/infra/endpoint-service/nlb-dns',this.nlbDnsName],
+        ].forEach(([param, val])=>
+            new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
+        );
+
+        // ----------------------- SSM params ----------------------- //
+        // new ssm.StringParameter(this, 'InfraVpcId', {
+        //     parameterName: '/isolated/infra/vpc/id',
+        //     stringValue: this.vpc.vpcId,
         // });
 
+        // new ssm.StringParameter(this, 'InfraNlbDnsName', {
+        //     parameterName: '/isolated/infra/nlb/dns',
+        //     stringValue: this.nlbDnsName,
+        // });
 
-
-        // ----------------------- SSM params ----------------------- //
-        // [
-        //     ['/isolated/infra/vpc/id',this.vpc.vpcId],
-        //     ['/isolated/infra/nlb/dns',this.nlbDnsName],
-        //     ['/isolated/infra/nlb/arn',this.loadBalancerArn],
-        //     ['/isolated/infra/endpoint-service/id',this.endpointServiceId],
-        //     ['/isolated/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${this.endpointServiceId}`],
-        //     ['/isolated/infra/endpoint-service/nlb-dns',this.nlbDnsName],
-        // ].forEach(([param, val])=>
-        //     new ssm.StringParameter(this,param,{ parameterName:param, stringValue:val })
-        // );
-
-        // ----------------------- SSM params ----------------------- //
-        new ssm.StringParameter(this, 'InfraVpcId', {
-            parameterName: '/isolated/infra/vpc/id',
-            stringValue: this.vpc.vpcId,
-        });
-
-        new ssm.StringParameter(this, 'InfraNlbDnsName', {
-            parameterName: '/isolated/infra/nlb/dns',
-            stringValue: this.nlbDnsName,
-        });
-
-        new ssm.StringParameter(this, 'InfraNlbArn', {
-            parameterName: '/isolated/infra/nlb/arn',
-            stringValue: this.nlb.loadBalancerArn,
-        });
+        // new ssm.StringParameter(this, 'InfraNlbArn', {
+        //     parameterName: '/isolated/infra/nlb/arn',
+        //     stringValue: this.nlb.loadBalancerArn,
+        // });
   
-        new ssm.StringParameter(this, 'InfraEndpointServiceId', {
-            parameterName: '/isolated/infra/endpoint-service/id',
-            stringValue: this.endpointServiceId,
-        });
+        // new ssm.StringParameter(this, 'InfraEndpointServiceId', {
+        //     parameterName: '/isolated/infra/endpoint-service/id',
+        //     stringValue: this.endpointServiceId,
+        // });
 
-        // set a endpointService name to ssm parameter store
-        new ssm.StringParameter(this, 'InfraEndpointServiceName', {
-            parameterName: '/isolated/infra/endpoint-service/name',
-            stringValue: `com.amazonaws.vpce.${this.region}.${this.endpointServiceId}`,
-        });
-        // set a endpoint service nld dns name to ssm parameter store
-        new ssm.StringParameter(this, 'InfraEndpointServiceNlbDns', {
-            parameterName: '/isolated/infra/endpoint-service/nlb-dns',
-            stringValue: this.nlbDnsName,
-        });
+        // // set a endpointService name to ssm parameter store
+        // new ssm.StringParameter(this, 'InfraEndpointServiceName', {
+        //     parameterName: '/isolated/infra/endpoint-service/name',
+        //     stringValue: `com.amazonaws.vpce.${this.region}.${this.endpointServiceId}`,
+        // });
+        // // set a endpoint service nld dns name to ssm parameter store
+        // new ssm.StringParameter(this, 'InfraEndpointServiceNlbDns', {
+        //     parameterName: '/isolated/infra/endpoint-service/nlb-dns',
+        //     stringValue: this.nlbDnsName,
+        // });
 
         // ----------------------- Outputs ----------------------- //
         new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'IsolatedNlbDnsName' });
