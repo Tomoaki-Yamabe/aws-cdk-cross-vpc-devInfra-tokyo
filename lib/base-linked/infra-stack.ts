@@ -4,9 +4,11 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
-import { configServerUserData } from './apiserver-userdata';
+import { Asset } from 'aws-cdk-lib/aws-s3-assets';
+import * as path from 'path';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { IpTarget } from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
+import { ApiServerUserData } from './apiserver-userdata';
 
 interface LinkedVpcStackProps extends cdk.StackProps {
   vpcId: string;
@@ -74,17 +76,17 @@ export class LinkedInfraStack extends cdk.Stack {
 
 
       // ----------------------- NLB ----------------------- //
-
+      // 暫定的に既存のLinkedVPC用NLBを使用
       this.linkednlb = elbv2.NetworkLoadBalancer.fromLookup(this, 'ExistingNLB', {
-        loadBalancerArn: 'arn:aws:elasticloadbalancing:ap-northeast-1:481393820746:loadbalancer/net/sils-isolated2Linked-NLB-MILS/53156c35fcc0e3c5',
+        loadBalancerArn: 'arn:aws:elasticloadbalancing:ap-northeast-1:481393820746:loadbalancer/net/sils-isolated2Linked-NLB-SILS/c06fbee59f0c846e',
       });
 
       // // create and shared internal NLB
       // this.linkednlb = new elbv2.NetworkLoadBalancer(this, 'LinkedSharedNLB', {
-      //     vpc: this.vpc,
-      //     internetFacing: false, // internal NLB
-      //     vpcSubnets: { subnets: [ this.subnets[0] ] },
-      //     crossZoneEnabled: true,
+      //   vpc: this.vpc,
+      //   internetFacing: false, // internal NLB
+      //   vpcSubnets: { subnets: this.subnets }, 
+      //   crossZoneEnabled: true,
       // });
       this.nlbDnsName = this.linkednlb.loadBalancerDnsName;
       this.loadBalancerArn = this.linkednlb.loadBalancerArn;
@@ -138,6 +140,42 @@ export class LinkedInfraStack extends cdk.Stack {
         actions: ["ssm:DescribeParameters"],
         resources: ["*"],
       }));
+      
+      // Add policy for EC2 tag
+      asgRole.addToPolicy(new iam.PolicyStatement({
+        actions: ["ec2:DescribeTags"],
+        resources: ["*"],
+      }));
+      
+      // Add Policy for cfn-signal
+      asgRole.addToPolicy(new iam.PolicyStatement({
+        actions: [
+          "cloudformation:SignalResource",
+          "cloudformation:DescribeStackResource",
+          "cloudformation:DescribeStackResources"
+        ],
+        resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/${this.stackName}/*`],
+      }));
+      
+      // Add Policy for cfn-init
+      asgRole.addToPolicy(new iam.PolicyStatement({
+        actions: [
+          "cloudformation:DescribeStackResources",
+          "cloudformation:DescribeStackResource"
+        ],
+        resources: ["*"],
+      }));
+      
+      // Add Policy for CloudWatch Logs
+      asgRole.addToPolicy(new iam.PolicyStatement({
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ],
+        resources: ["*"],
+      }));
 
       const gatewaySecurityGroup = new ec2.SecurityGroup(this, 'GatewaySG', {
         vpc: this.vpc,
@@ -150,7 +188,24 @@ export class LinkedInfraStack extends cdk.Stack {
         'Allow internal traffic from NLB'
       );
 
+
+      // ------------------------- Gateway Server EC2 on ASG ----------------------- //
+
       const keyPair = ec2.KeyPair.fromKeyPairName(this, 'KeyPair', 'tom');
+
+      // Try Use Asset
+      const apiServerUserData = new ApiServerUserData(this, 'ApiServerUserData');
+      
+      // Add get S3 Policy to IAM
+      apiServerUserData.grantReadToRole(asgRole);
+
+      const userData = apiServerUserData.userData;
+      
+      // スタック名とリージョンを環境変数として最初に追加
+      userData.addCommands(
+        `export STACK_NAME="${this.stackName}"`,
+        `export AWS_DEFAULT_REGION="${this.region}"`
+      );
 
       const launchTemplate = new ec2.LaunchTemplate(this, 'GatewayLaunchTemplate', {
         machineImage: ec2.MachineImage.latestAmazonLinux2(),
@@ -158,7 +213,15 @@ export class LinkedInfraStack extends cdk.Stack {
         keyPair,
         role: asgRole,
         securityGroup: gatewaySecurityGroup,
-        userData: ec2.UserData.custom(configServerUserData),
+        userData: userData,
+      });
+      
+      // LaunchTemplateのメタデータオプションを設定 CDKのL2
+      const cfnLaunchTemplate = launchTemplate.node.defaultChild as ec2.CfnLaunchTemplate;
+      cfnLaunchTemplate.addPropertyOverride('LaunchTemplateData.MetadataOptions', {
+        HttpTokens: 'required',
+        HttpPutResponseHopLimit: 2,
+        InstanceMetadataTags: 'enabled',
       });
 
       const asg = new autoscaling.AutoScalingGroup(this, 'GatewayASG', {
@@ -168,6 +231,55 @@ export class LinkedInfraStack extends cdk.Stack {
         maxCapacity: 1,
         desiredCapacity: 1,
         launchTemplate,
+        // wait to finirsh cfn-signal
+        signals: autoscaling.Signals.waitForAll({
+          timeout: cdk.Duration.minutes(15),
+          minSuccessPercentage: 100,
+        }),
+        // Setting lifecycle policy
+        updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+          maxBatchSize: 1,
+          minInstancesInService: 0,
+          pauseTime: cdk.Duration.minutes(15),
+          waitOnResourceSignals: true,
+          suspendProcesses: [
+            autoscaling.ScalingProcess.HEALTH_CHECK,
+            autoscaling.ScalingProcess.REPLACE_UNHEALTHY,
+            autoscaling.ScalingProcess.AZ_REBALANCE,
+            autoscaling.ScalingProcess.ALARM_NOTIFICATION,
+            autoscaling.ScalingProcess.SCHEDULED_ACTIONS,
+            autoscaling.ScalingProcess.INSTANCE_REFRESH,
+          ]
+        }),
+      });
+
+      // ----------------------- ProxyサーバーNLBリスナー ----------------------- //
+      const PROXY_PORT = 8080;
+      
+      // ProxyサーバーASG用のターゲットグループを作成
+      const proxyTargetGroup = new elbv2.NetworkTargetGroup(this, 'ProxyTargetGroup', {
+        vpc: this.vpc,
+        port: PROXY_PORT,
+        protocol: elbv2.Protocol.TCP,
+        targetType: elbv2.TargetType.INSTANCE,
+        healthCheck: {
+          enabled: true,
+          protocol: elbv2.Protocol.TCP,
+          port: `${PROXY_PORT}`,
+          healthyThresholdCount: 2,
+          unhealthyThresholdCount: 2,
+          interval: cdk.Duration.seconds(30),
+        },
+      });
+
+      // ASGをターゲットグループに接続
+      asg.attachToNetworkTargetGroup(proxyTargetGroup);
+
+      // NLBにProxyサーバー用のリスナーを追加
+      const proxyListener = this.linkednlb.addListener('ProxyListener', {
+        port: PROXY_PORT,
+        protocol: elbv2.Protocol.TCP,
+        defaultTargetGroups: [proxyTargetGroup],
       });
 
       // NLBリスナーの作成を一時的にコメントアウト（既存NLBとの競合回避のため）
@@ -233,6 +345,9 @@ export class LinkedInfraStack extends cdk.Stack {
         ['/linked/infra/nlb/dns',this.nlbDnsName],
         ['/linked/infra/nlb/arn',this.linkednlb.loadBalancerArn],
         ['/linked/infra/endpoint-service/nlb-dns',this.nlbDnsName],
+        ['/linked/infra/proxy/endpoint', `${this.linkednlb.loadBalancerDnsName}:${PROXY_PORT}`],
+        ['/linked/infra/proxy/port', `${PROXY_PORT}`],
+        ['/linked/infra/privatelink/endpoint', this.endpointDns],
         // OnPremエンドポイントは一時的にコメントアウト（NLBリスナー未作成のため）
         // ['/onprem/as4-gitlab/endpoint', `${this.linkednlb.loadBalancerDnsName}:${AS4_GITLAB_LISTENER_PORT}`],
         // ['/onprem/silver-license/endpoint', `${this.linkednlb.loadBalancerDnsName}:${SILVER_LICENSE_LISTENER_PORT}`],
@@ -245,8 +360,16 @@ export class LinkedInfraStack extends cdk.Stack {
       
       // ----------------------- Outputs ----------------------- //
       new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'LinkedNlbDnsName' });
-      // new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'LinkedEndpointServiceId' });
+      new cdk.CfnOutput(this, 'ProxyEndpoint', {
+        value: `${this.linkednlb.loadBalancerDnsName}:${PROXY_PORT}`,
+        exportName: 'LinkedProxyEndpoint',
+        description: 'Proxy Server Endpoint (NLB DNS:Port)'
+      });
+      new cdk.CfnOutput(this, 'PrivateLinkEndpoint', {
+        value: this.endpointDns,
+        exportName: 'LinkedPrivateLinkEndpoint',
+        description: 'PrivateLink VPC Endpoint DNS for Backend Services'
+      });
       new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.linkednlb.loadBalancerArn, exportName: 'LinkedNlbArn' });
-      // new cdk.CfnOutput(this, 'InterfaceEndpointDns', { value: this.endpointDns });
     }
 }
