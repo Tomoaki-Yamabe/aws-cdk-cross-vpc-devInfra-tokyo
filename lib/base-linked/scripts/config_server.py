@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
-import boto3, httpx, json
+import boto3, httpx, json, socket
 
 app = FastAPI(title="Gateway API", docs_url=None, redoc_url=None)
 ssm = boto3.client('ssm', region_name='ap-northeast-1')
@@ -34,6 +34,29 @@ def list_service_configs():
     return parameters
 
 
+# Get NLB IP addresses from DNS name
+def get_nlb_ip_addresses(dns_name):
+    """
+    Resolve NLB DNS name to IP addresses
+    Returns a comma-separated string of IP addresses
+    """
+    try:
+        if dns_name == "N/A" or not dns_name:
+            return "N/A"
+        
+        # Get all IP addresses for the DNS name
+        ip_addresses = socket.getaddrinfo(dns_name, None)
+        # Extract unique IPv4 addresses
+        ipv4_addresses = list(set([ip[4][0] for ip in ip_addresses if ip[0] == socket.AF_INET]))
+        
+        if ipv4_addresses:
+            return ", ".join(sorted(ipv4_addresses))
+        else:
+            return "No IPv4 found"
+    except Exception as e:
+        return f"DNS解決エラー: {str(e)}"
+
+
 # Root Page
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -46,13 +69,24 @@ async def root():
     # Available Services Section
     html += "<h2>📋 Available Backend Services</h2>"
     if services:
-        html += "<table><tr><th>Service Name</th><th>NLB DNS</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
+        html += "<table><tr><th>Service Name</th><th>NLB DNS</th><th>VPC Endpoint IPs</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
+        
+        # Get VPC Endpoint DNS from SSM
+        vpc_endpoint_dns = "N/A"
+        try:
+            vpc_endpoint_dns = ssm.get_parameter(Name='/linked/infra/privatelink/endpoint')['Parameter']['Value']
+        except:
+            pass
+        
+        vpc_endpoint_ips = get_nlb_ip_addresses(vpc_endpoint_dns)
+        
         for s in services:
             name = s.get("serviceName", "Unknown")
             nlb_dns = s.get("nlbDnsName", "N/A")
+            nlb_ips = get_nlb_ip_addresses(nlb_dns)
             listener_port = s.get("listenerPort", "N/A")
             target_port = s.get("targetPort", "N/A")
-            html += f'<tr><td>{name}</td><td>{nlb_dns}</td><td>{listener_port}</td><td>{target_port}</td>'
+            html += f'<tr><td>{name}</td><td>{nlb_dns}</td><td>{vpc_endpoint_ips}</td><td>{listener_port}</td><td>{target_port}</td>'
             html += f'<td><a href="/docs/{name}">Swagger UI</a></td></tr>'
         html += "</table>"
     else:
@@ -62,6 +96,12 @@ async def root():
     html += "<h2>🔗 Connection Information</h2>"
     html += "<p><strong>API Endpoint:</strong> <code>http://&lt;this-server&gt;:8080/api/&lt;service-name&gt;/&lt;path&gt;</code></p>"
     html += "<p><strong>Example:</strong> <code>http://&lt;this-server&gt;:8080/api/gets3data-service/health</code></p>"
+    
+    # PrivateLink Information
+    html += "<h2>🔗 PrivateLink Connection Details</h2>"
+    html += "<p><strong>VPC Endpoint DNS:</strong> <code>" + vpc_endpoint_dns + "</code></p>"
+    html += "<p><strong>VPC Endpoint IPs:</strong> <code>" + vpc_endpoint_ips + "</code></p>"
+    html += "<p><em>Note: Proxy server routes traffic to Isolated VPC services via PrivateLink VPC Endpoint</em></p>"
     
     # On-Prem Services Section (with error handling)
     html += "<h2>🏢 On-Premises Services</h2>"
