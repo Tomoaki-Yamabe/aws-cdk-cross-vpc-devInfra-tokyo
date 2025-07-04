@@ -69,7 +69,7 @@ async def root():
     # Available Services Section
     html += "<h2>📋 Available Backend Services</h2>"
     if services:
-        html += "<table><tr><th>Service Name</th><th>NLB DNS</th><th>VPC Endpoint IPs</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
+        html += "<table><tr><th>Service Name</th><th>Isolated NLB DNS</th><th>VPC Endpoint IPs</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
         
         # Get VPC Endpoint DNS from SSM
         vpc_endpoint_dns = "N/A"
@@ -80,10 +80,18 @@ async def root():
         
         vpc_endpoint_ips = get_nlb_ip_addresses(vpc_endpoint_dns)
         
+        # Get LinkedVPC NLB DNS from SSM
+        linked_nlb_dns = "N/A"
+        try:
+            linked_nlb_dns = ssm.get_parameter(Name='/linked/infra/nlb/dns')['Parameter']['Value']
+        except:
+            pass
+        
+        linked_nlb_ips = get_nlb_ip_addresses(linked_nlb_dns)
+        
         for s in services:
             name = s.get("serviceName", "Unknown")
             nlb_dns = s.get("nlbDnsName", "N/A")
-            nlb_ips = get_nlb_ip_addresses(nlb_dns)
             listener_port = s.get("listenerPort", "N/A")
             target_port = s.get("targetPort", "N/A")
             html += f'<tr><td>{name}</td><td>{nlb_dns}</td><td>{vpc_endpoint_ips}</td><td>{listener_port}</td><td>{target_port}</td>'
@@ -131,6 +139,14 @@ async def root():
     return HTMLResponse(html)
 
 
+# Get VPC Endpoint DNS for routing
+def get_vpc_endpoint_dns():
+    """Get VPC Endpoint DNS from SSM Parameter Store"""
+    try:
+        return ssm.get_parameter(Name='/linked/infra/privatelink/endpoint')['Parameter']['Value']
+    except:
+        return None
+
 # Reverse Proxy API Router
 @app.api_route("/api/{service_name}/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS"])
 async def proxy(service_name: str, path: str, request: Request):
@@ -140,8 +156,14 @@ async def proxy(service_name: str, path: str, request: Request):
     if not cfg:
         return JSONResponse({"error":"service not found preace check service"}, status_code=404)
 
-    # Create target URL and make request to target service
-    target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/{path}"
+    # Use VPC Endpoint DNS for routing to Isolated VPC services
+    vpc_endpoint_dns = get_vpc_endpoint_dns()
+    if vpc_endpoint_dns:
+        target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/{path}"
+    else:
+        # Fallback to NLB DNS if VPC endpoint is not available
+        target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/{path}"
+    
     req = await request.body()
 
     # httpx client to make request to target service
@@ -168,7 +190,13 @@ async def proxy_openapi(service_name: str):
             status_code=404
         )
 
-    target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/openapi.json"
+    # Use VPC Endpoint DNS for routing to Isolated VPC services
+    vpc_endpoint_dns = get_vpc_endpoint_dns()
+    if vpc_endpoint_dns:
+        target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/openapi.json"
+    else:
+        # Fallback to NLB DNS if VPC endpoint is not available
+        target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/openapi.json"
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(target, timeout=10.0)

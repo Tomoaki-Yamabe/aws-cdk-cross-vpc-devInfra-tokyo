@@ -200,12 +200,6 @@ export class LinkedInfraStack extends cdk.Stack {
       apiServerUserData.grantReadToRole(asgRole);
 
       const userData = apiServerUserData.userData;
-      
-      // スタック名とリージョンを環境変数として最初に追加
-      userData.addCommands(
-        `export STACK_NAME="${this.stackName}"`,
-        `export AWS_DEFAULT_REGION="${this.region}"`
-      );
 
       const launchTemplate = new ec2.LaunchTemplate(this, 'GatewayLaunchTemplate', {
         machineImage: ec2.MachineImage.latestAmazonLinux2(),
@@ -251,6 +245,16 @@ export class LinkedInfraStack extends cdk.Stack {
             autoscaling.ScalingProcess.INSTANCE_REFRESH,
           ]
         }),
+      });
+
+      // ASGの正しいLogical IDを取得
+      const asgResourceLogicalId = (asg.node.defaultChild as cdk.CfnResource).logicalId;
+      
+      // 環境変数を設定してstart-app.shを実行
+      apiServerUserData.setEnvironmentAndExecuteStartApp({
+        STACK_NAME: this.stackName,
+        AWS_DEFAULT_REGION: this.region,
+        ASG_RESOURCE_NAME: asgResourceLogicalId,
       });
 
       // ----------------------- ProxyサーバーNLBリスナー ----------------------- //
