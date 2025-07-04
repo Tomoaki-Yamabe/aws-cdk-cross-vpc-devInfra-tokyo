@@ -30,7 +30,7 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
   ],
 });
 
-// Services
+// ----------------------- Services ----------------------- //
 const services = [
   {
     id: 'ChatbotService',
@@ -49,6 +49,33 @@ const services = [
     memoryLimitMiB: 1024,
     cpu: 512,
     serviceName: 'gets3data-service',
+    // S3アクセス権限を追加
+    taskRolePolicies: [
+      {
+        actions: [
+          's3:GetObject',
+          's3:ListBucket',
+          's3:GetBucketLocation'
+        ],
+        resources: [
+          'arn:aws:s3:::*',
+          'arn:aws:s3:::*/*'
+        ]
+      },
+      {
+        actions: [
+          'ssm:GetParameter',
+          'ssm:GetParameters',
+          'ssm:GetParametersByPath'
+        ],
+        resources: [
+          'arn:aws:ssm:ap-northeast-1:*:parameter/services/*'
+        ]
+      }
+    ],
+    managedPolicies: [
+      'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+    ]
   },
   {
     id: 'EC2Control',
@@ -58,6 +85,28 @@ const services = [
     memoryLimitMiB: 1024,
     cpu: 512,
     serviceName: 'ec2control-service',
+    // EC2制御権限を追加
+    taskRolePolicies: [
+      {
+        actions: [
+          'ec2:DescribeInstances',
+          'ec2:DescribeInstanceStatus',
+          'ec2:StartInstances',
+          'ec2:StopInstances',
+          'ec2:RebootInstances'
+        ],
+        resources: ['*']
+      },
+      {
+        actions: [
+          'ssm:GetParameter',
+          'ssm:GetParameters'
+        ],
+        resources: [
+          'arn:aws:ssm:ap-northeast-1:*:parameter/services/*'
+        ]
+      }
+    ]
   },
   {
     id: 'Dorawio',
@@ -76,6 +125,28 @@ const services = [
     memoryLimitMiB: 1024,
     cpu: 512,
     serviceName: 'ec2control-service-IAP',
+    // EC2制御権限（IAP版）を追加
+    taskRolePolicies: [
+      {
+        actions: [
+          'ec2:DescribeInstances',
+          'ec2:DescribeInstanceStatus',
+          'ec2:StartInstances',
+          'ec2:StopInstances',
+          'ec2:RebootInstances'
+        ],
+        resources: ['*']
+      },
+      {
+        actions: [
+          'iam:GetRole',
+          'iam:PassRole'
+        ],
+        resources: [
+          'arn:aws:iam::*:role/EC2-*'
+        ]
+      }
+    ]
   },
 
   

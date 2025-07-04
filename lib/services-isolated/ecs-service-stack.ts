@@ -20,6 +20,13 @@ export interface EcsServiceStackProps extends cdk.StackProps {
   serviceName: string;
   memoryLimitMiB: number;
   cpu: number;
+  // IAMロール設定用の新しいプロパティ
+  taskRolePolicies?: Array<{
+    actions: string[];
+    resources: string[];
+    conditions?: any;
+  }>;
+  managedPolicies?: string[];
 }
 
 export class EcsServiceStack extends cdk.Stack {
@@ -31,9 +38,48 @@ export class EcsServiceStack extends cdk.Stack {
     cdk.Tags.of(this).add('OwnedBy', 'YAMABE');
     cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
 
+    // Task Role（アプリケーションが使用するAWSサービスへのアクセス権限）
+    let taskRole: iam.Role | undefined;
+    
+    if (props.taskRolePolicies || props.managedPolicies) {
+      taskRole = new iam.Role(this, 'TaskRole', {
+        assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+        description: `Task role for ${props.serviceName} ECS service`,
+      });
+
+      // カスタムポリシーの追加
+      if (props.taskRolePolicies) {
+        props.taskRolePolicies.forEach((policy, index) => {
+          taskRole!.addToPolicy(new iam.PolicyStatement({
+            actions: policy.actions,
+            resources: policy.resources,
+            conditions: policy.conditions,
+          }));
+        });
+      }
+
+      // 管理ポリシーの追加
+      if (props.managedPolicies) {
+        props.managedPolicies.forEach((policyArn, index) => {
+          if (policyArn.startsWith('arn:aws:iam::aws:policy/')) {
+            // AWS管理ポリシーの場合
+            taskRole!.addManagedPolicy(
+              iam.ManagedPolicy.fromAwsManagedPolicyName(policyArn.split('/').pop()!)
+            );
+          } else {
+            // カスタム管理ポリシーの場合
+            taskRole!.addManagedPolicy(
+              iam.ManagedPolicy.fromManagedPolicyArn(this, `ManagedPolicy${index}`, policyArn)
+            );
+          }
+        });
+      }
+    }
+
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       memoryLimitMiB: props.memoryLimitMiB,
       cpu: props.cpu,
+      taskRole: taskRole, // Task Roleを設定
     });
 
     // create execution role for ECS task
