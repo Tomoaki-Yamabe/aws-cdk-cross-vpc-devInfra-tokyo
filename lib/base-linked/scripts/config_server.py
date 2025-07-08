@@ -69,7 +69,7 @@ async def root():
     # Available Services Section
     html += "<h2> Available Backend Services</h2>"
     if services:
-        html += "<table><tr><th>Service Name</th><th>Isolated NLB DNS</th><th>VPC Endpoint IPs</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
+        html += "<table><tr><th>Service Name</th><th>Isolated NLB DNS</th><th>Linked VPC Endpoint IPs</th><th>Listner Port</th><th>Target Port</th><th>API Docs</th></tr>"
         
         # Get VPC Endpoint DNS from SSM
         vpc_endpoint_dns = "N/A"
@@ -109,6 +109,7 @@ async def root():
     html += "<h2>🔗 PrivateLink Connection Details</h2>"
     html += "<p><strong>VPC Endpoint DNS:</strong> <code>" + vpc_endpoint_dns + "</code></p>"
     html += "<p><strong>VPC Endpoint IPs:</strong> <code>" + vpc_endpoint_ips + "</code></p>"
+    html += "<p><strong>Example:</strong> <code>http://10.213.66.188:50001/docs</code></p>" 
     html += "<p><em>Note: Proxy server routes traffic to Isolated VPC services via PrivateLink VPC Endpoint</em></p>"
     
     # On-Prem Services Section (with error handling)
