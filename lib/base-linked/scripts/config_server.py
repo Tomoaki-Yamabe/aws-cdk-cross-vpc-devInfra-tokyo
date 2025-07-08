@@ -64,10 +64,10 @@ async def root():
     html = "<html><head><title>Gateway API Server</title>"
     html += "<style>body{font-family:Arial,sans-serif;margin:40px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background-color:#f2f2f2;}</style>"
     html += "</head><body>"
-    html += "<h1>🚀 Gateway API Server</h1>"
+    html += "<h1>Hello! Gateway API Server</h1>"
     
     # Available Services Section
-    html += "<h2>📋 Available Backend Services</h2>"
+    html += "<h2> Available Backend Services</h2>"
     if services:
         html += "<table><tr><th>Service Name</th><th>Isolated NLB DNS</th><th>VPC Endpoint IPs</th><th>Port</th><th>Target Port</th><th>API Docs</th></tr>"
         
