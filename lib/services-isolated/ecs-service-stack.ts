@@ -12,11 +12,6 @@ import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
-  loadBalancerArn: string;
-  loadBalancerDnsName: string;
-  alb: elbv2.ApplicationLoadBalancer;
-  albDnsName: string;
-  cluster: ecs.Cluster;
   vpc: ec2.IVpc;
   listenerPort: number;
   containerPort: number;
@@ -34,6 +29,29 @@ export class EcsServiceStack extends cdk.Stack {
     cdk.Tags.of(this).add('Environment', 'Production');
     cdk.Tags.of(this).add('OwnedBy', 'YAMABE');
     cdk.Tags.of(this).add('ManagedBy', 'CloudFormation');
+
+    // Get values from SSM Parameter Store
+    const clusterArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/ecs/cluster/arn');
+    const albArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/arn');
+    const albDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/dns');
+    const albSecurityGroupId = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/security-group-id');
+    const nlbDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/nlb/dns');
+
+    // Extract cluster name from ARN
+    const clusterName = cdk.Stack.of(this).splitArn(clusterArn, cdk.ArnFormat.SLASH_RESOURCE_NAME).resourceName!;
+
+    // Import resources from SSM parameters
+    const cluster = ecs.Cluster.fromClusterAttributes(this, 'ImportedCluster', {
+      clusterArn: clusterArn,
+      clusterName: clusterName,
+      vpc: props.vpc,
+    });
+    const alb = elbv2.ApplicationLoadBalancer.fromApplicationLoadBalancerAttributes(this, 'ImportedALB', {
+      loadBalancerArn: albArn,
+      vpc: props.vpc,
+      loadBalancerDnsName: albDnsName,
+      securityGroupId: albSecurityGroupId,
+    });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       memoryLimitMiB: props.memoryLimitMiB,
@@ -69,7 +87,7 @@ export class EcsServiceStack extends cdk.Stack {
 
     // create Fargate survice
     const service = new ecs.FargateService(this, 'FargateService', {
-      cluster: props.cluster,
+      cluster: cluster,
         taskDefinition: taskDef,
       desiredCount: 2,
       assignPublicIp: false,
@@ -114,7 +132,7 @@ export class EcsServiceStack extends cdk.Stack {
 
     // Create ALB listener and associate with blue target group initially
     const listener = new elbv2.ApplicationListener(this, `${props.serviceName}Listener`, {
-      loadBalancer: props.alb,
+      loadBalancer: alb,
       port: props.listenerPort,
       protocol: elbv2.ApplicationProtocol.HTTP,
       defaultTargetGroups: [blueTargetGroup],
@@ -271,14 +289,14 @@ EOF`,
       parameterName: `/services/${props.serviceName}/config`,
       stringValue: JSON.stringify({
         serviceName: props.serviceName,
-        nlbDnsName: props.loadBalancerDnsName, // 一時的にIsolated側のNLB DNS名を使用
+        nlbDnsName: nlbDnsName, // 一時的にIsolated側のNLB DNS名を使用
         listenerPort: props.listenerPort,
         targetPort: props.containerPort,
       }),
     });
 
     new cdk.CfnOutput(this, `${props.serviceName}AlbDnsName`, {
-      value: props.albDnsName,
+      value: albDnsName,
     });
   }
 }

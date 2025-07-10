@@ -370,5 +370,9 @@
   "security-group:account=481393820746:region=ap-northeast-1:securityGroupId=sg-0556a4a771a3287ec": {
     "securityGroupId": "sg-0556a4a771a3287ec",
     "allowAllOutbound": false
-  }
+  },
+  "acknowledged-issue-numbers": [
+    34892,
+    34892
+  ]
 }

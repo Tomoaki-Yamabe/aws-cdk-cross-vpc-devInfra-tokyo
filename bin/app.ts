@@ -84,9 +84,6 @@ const services = [
 for (const svc of services) {
   new EcsServiceStack(app, `XILS-APP-${svc.id}`, {
     env,
-    loadBalancerArn: infraStack.loadBalancerArn,
-    loadBalancerDnsName : infraStack.nlbDnsName,
-    cluster: infraStack.cluster,
     vpc: infraStack.vpc,
     ...svc,
   });

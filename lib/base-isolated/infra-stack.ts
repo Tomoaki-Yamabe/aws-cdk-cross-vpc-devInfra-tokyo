@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 interface IsolatedVpcStackProps extends cdk.StackProps {
@@ -15,9 +16,12 @@ export class IsolatedInfraStack extends cdk.Stack {
     public readonly subnets: ec2.ISubnet[];
     public readonly cluster: ecs.Cluster;
     public readonly nlb: elbv2.NetworkLoadBalancer;
+    public readonly alb: elbv2.ApplicationLoadBalancer;
     public readonly nlbDnsName: string;
+    public readonly albDnsName: string;
     public readonly endpointServiceId: string;
     public readonly loadBalancerArn: string;
+    public readonly albArn: string;
 
     constructor(scope: Construct, id: string, props: IsolatedVpcStackProps) {
         super(scope, id, props);
@@ -83,6 +87,58 @@ export class IsolatedInfraStack extends cdk.Stack {
         // ----------------------- ECS ----------------------- //
         this.cluster = new ecs.Cluster(this, 'EcsCluster', { vpc: this.vpc });
 
+        // ----------------------- ALB ----------------------- //
+        // Create ALB security group
+        const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+            vpc: this.vpc,
+            description: 'Security group for ALB',
+            allowAllOutbound: true,
+        });
+        
+        // Allow traffic from NLB to ALB (all ports since NLB will forward different service ports)
+        albSg.addIngressRule(
+            ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+            ec2.Port.allTcp(),
+            'Allow traffic from NLB'
+        );
+
+        // Create internal ALB
+        this.alb = new elbv2.ApplicationLoadBalancer(this, 'SharedALB', {
+            vpc: this.vpc,
+            internetFacing: false, // internal ALB
+            vpcSubnets: { subnets: this.subnets },
+            securityGroup: albSg,
+        });
+        this.albDnsName = this.alb.loadBalancerDnsName;
+        this.albArn = this.alb.loadBalancerArn;
+
+        // Create NLB target group with ALB as target
+        const nlbToAlbTargetGroup = new elbv2.NetworkTargetGroup(this, 'NlbToAlbTargetGroup', {
+            vpc: this.vpc,
+            port: 80, // Default port for ALB communication
+            protocol: elbv2.Protocol.TCP,
+            targetType: elbv2.TargetType.ALB,
+            healthCheck: {
+                port: '80',
+                protocol: elbv2.Protocol.TCP,
+                healthyThresholdCount: 2,
+                unhealthyThresholdCount: 2,
+                timeout: cdk.Duration.seconds(6),
+                interval: cdk.Duration.seconds(30),
+            },
+        });
+
+        // Add ALB as target to NLB target group
+        nlbToAlbTargetGroup.addTarget(new targets.AlbArnTarget(this.alb.loadBalancerArn, 80));
+
+        // Create default NLB listener that forwards to ALB
+        new elbv2.NetworkListener(this, 'NlbDefaultListener', {
+            loadBalancer: this.nlb,
+            port: 80,
+            protocol: elbv2.Protocol.TCP,
+            defaultTargetGroups: [nlbToAlbTargetGroup],
+        });
+
         // Create Security Group for VPC endpoints    
         const ecrSg = new ec2.SecurityGroup(this,'IsoEcrSG',{
             vpc:this.vpc, 
@@ -117,6 +173,10 @@ export class IsolatedInfraStack extends cdk.Stack {
             ['/isolated/infra/vpc/id',this.vpc.vpcId],
             ['/isolated/infra/nlb/dns',this.nlbDnsName],
             ['/isolated/infra/nlb/arn',this.loadBalancerArn],
+            ['/isolated/infra/alb/dns',this.albDnsName],
+            ['/isolated/infra/alb/arn',this.albArn],
+            ['/isolated/infra/alb/security-group-id',albSg.securityGroupId],
+            ['/isolated/infra/ecs/cluster/arn',this.cluster.clusterArn],
             ['/isolated/infra/endpoint-service/id',this.endpointServiceId],
             ['/isolated/infra/endpoint-service/name',`com.amazonaws.vpce.${this.region}.${this.endpointServiceId}`],
             ['/isolated/infra/endpoint-service/nlb-dns',this.nlbDnsName],
@@ -158,7 +218,9 @@ export class IsolatedInfraStack extends cdk.Stack {
 
         // ----------------------- Outputs ----------------------- //
         new cdk.CfnOutput(this, 'NlbDnsName', { value: this.nlbDnsName, exportName: 'IsolatedNlbDnsName' });
+        new cdk.CfnOutput(this, 'AlbDnsName', { value: this.albDnsName, exportName: 'IsolatedAlbDnsName' });
         new cdk.CfnOutput(this, 'EndpointServiceId', { value: this.endpointServiceId, exportName: 'IsoEndpointServiceId' });
         new cdk.CfnOutput(this, 'LoadBalancerArnOutput', { value: this.nlb.loadBalancerArn, exportName: 'IsolatedNlbArn' });
+        new cdk.CfnOutput(this, 'AlbArnOutput', { value: this.alb.loadBalancerArn, exportName: 'IsolatedAlbArn' });
     }
 }
