@@ -9,10 +9,13 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
   loadBalancerArn: string;
   loadBalancerDnsName: string;
+  alb: elbv2.ApplicationLoadBalancer;
+  albDnsName: string;
   cluster: ecs.Cluster;
   vpc: ec2.IVpc;
   listenerPort: number;
@@ -71,35 +74,77 @@ export class EcsServiceStack extends cdk.Stack {
       desiredCount: 2,
       assignPublicIp: false,
       securityGroups: [fargateSg],
+      deploymentController:{
+        type: ecs.DeploymentControllerType.CODE_DEPLOY
+      }
     });
 
-    // Import the existing NLB by ARN
-    const importedNlb = elbv2.NetworkLoadBalancer.fromNetworkLoadBalancerAttributes(this, 'ImportedNLB', {
-      loadBalancerArn: props.loadBalancerArn,
+    // Create Blue and Green target groups for ALB Blue/Green deployment
+    const blueTargetGroup = new elbv2.ApplicationTargetGroup(this, `${props.serviceName}BlueTargetGroup`, {
       vpc: props.vpc,
-      loadBalancerDnsName: cdk.Fn.importValue('IsolatedNlbDnsName'),
-    });
-
-    // Create listener and associate directly with service's target group
-    const listener = new elbv2.NetworkListener(this, `${props.serviceName}Listener`, {
-      loadBalancer: importedNlb,
-      port: props.listenerPort,
-      protocol: elbv2.Protocol.TCP,
-    });
-
-    listener.addTargets(`${props.serviceName}Target`, {
       port: props.containerPort,
-      targets: [service.loadBalancerTarget({
-        containerName: 'AppContainer',
-        containerPort: props.containerPort,
-      })],
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
       healthCheck: {
+        path: '/',
         port: `${props.containerPort}`,
-        protocol: elbv2.Protocol.TCP,
+        protocol: elbv2.Protocol.HTTP,
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 2,
+        timeout: cdk.Duration.seconds(5),
+        interval: cdk.Duration.seconds(30),
       },
     });
 
+    const greenTargetGroup = new elbv2.ApplicationTargetGroup(this, `${props.serviceName}GreenTargetGroup`, {
+      vpc: props.vpc,
+      port: props.containerPort,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: '/',
+        port: `${props.containerPort}`,
+        protocol: elbv2.Protocol.HTTP,
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 2,
+        timeout: cdk.Duration.seconds(5),
+        interval: cdk.Duration.seconds(30),
+      },
+    });
 
+    // Create ALB listener and associate with blue target group initially
+    const listener = new elbv2.ApplicationListener(this, `${props.serviceName}Listener`, {
+      loadBalancer: props.alb,
+      port: props.listenerPort,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      defaultTargetGroups: [blueTargetGroup],
+    });
+
+    // Register the service with the blue target group initially
+    blueTargetGroup.addTarget(service.loadBalancerTarget({
+      containerName: 'AppContainer',
+      containerPort: props.containerPort,
+    }));
+
+
+
+    // ------------ CodeDeploy for Blue/Green ------------ //
+    const codeDeployApp = new codedeploy.EcsApplication(this, 'CodeDeployApp', {
+      applicationName: `${props.serviceName}-CodeDeploy`,
+    });
+
+    const deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'DeploymentGroup', {
+      application: codeDeployApp,
+      service: service,
+      blueGreenDeploymentConfig: {
+        listener: listener,
+        blueTargetGroup: blueTargetGroup,
+        greenTargetGroup: greenTargetGroup,
+        deploymentApprovalWaitTime: cdk.Duration.minutes(5),
+        terminationWaitTime: cdk.Duration.minutes(5),
+      },
+      deploymentConfig: codedeploy.EcsDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+    });
 
     // ------------ CodePipeline ------------ //
     const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
@@ -109,7 +154,8 @@ export class EcsServiceStack extends cdk.Stack {
     const sourceOutput = new codepipeline.Artifact();
     const buildOutput = new codepipeline.Artifact();
 
-    // CodeBuild project to generate imagedefinitions.json
+    // CodeBuild project to generate deployment artifacts for Blue/Green
+    // ほんとは外部にbuild-speck.ymlとしておきたいけど、app.tsでfor文で回しているせいで内部に記述もっと良い方法があると思われ
     const buildProject = new codebuild.Project(this, 'BuildProject', {
       projectName: `${props.serviceName}-build`,
       environment: {
@@ -121,15 +167,59 @@ export class EcsServiceStack extends cdk.Stack {
         phases: {
           build: {
             commands: [
-              `echo 'Hello Start Build'`,
-              `ls`,
+              // Generate imagedefinitions.json
               `echo '[{"name":"AppContainer","imageUri":"${ecrRepo.repositoryUri}:latest"}]' > imagedefinitions.json`,
-              'cat imagedefinitions.json'
+              // Generate appspec.yaml for Blue/Green deployment
+              `cat > appspec.yaml << 'EOF'
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: <TASK_DEFINITION>
+        LoadBalancerInfo:
+          ContainerName: "AppContainer"
+          ContainerPort: ${props.containerPort}
+EOF`,
+              // Generate taskdef.json template
+              `cat > taskdef.json << 'EOF'
+{
+  "family": "${taskDef.family}",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "${props.cpu}",
+  "memory": "${props.memoryLimitMiB}",
+  "executionRoleArn": "<TASK_EXECUTION_ROLE>",
+  "containerDefinitions": [
+    {
+      "name": "AppContainer",
+      "image": "<IMAGE1_URI>",
+      "portMappings": [
+        {
+          "containerPort": ${props.containerPort},
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/${props.serviceName}",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "${props.serviceName}"
+        }
+      }
+    }
+  ]
+}
+EOF`,
+              'cat imagedefinitions.json',
+              'cat appspec.yaml',
+              'cat taskdef.json'
             ]
           }
         },
         artifacts: {
-          files: ['imagedefinitions.json']
+          files: ['imagedefinitions.json', 'appspec.yaml', 'taskdef.json']
         }
       })
     });
@@ -161,10 +251,11 @@ export class EcsServiceStack extends cdk.Stack {
     pipeline.addStage({
       stageName: 'Deploy',
       actions: [
-        new actions.EcsDeployAction({
-          actionName: 'DeployECS',
-          service,
-          input: buildOutput,
+        new actions.CodeDeployEcsDeployAction({
+          actionName: 'BlueGreenDeploy',
+          deploymentGroup: deploymentGroup,
+          appSpecTemplateInput: buildOutput,
+          taskDefinitionTemplateInput: buildOutput,
         }),
       ],
     });
@@ -186,8 +277,8 @@ export class EcsServiceStack extends cdk.Stack {
       }),
     });
 
-    new cdk.CfnOutput(this, `${props.serviceName}NlbDnsName`, {
-      value: importedNlb.loadBalancerDnsName,
+    new cdk.CfnOutput(this, `${props.serviceName}AlbDnsName`, {
+      value: props.albDnsName,
     });
   }
 }
