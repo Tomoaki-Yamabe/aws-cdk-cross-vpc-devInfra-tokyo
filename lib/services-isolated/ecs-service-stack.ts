@@ -8,6 +8,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as actions from 'aws-cdk-lib/aws-codepipeline-actions';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
   loadBalancerArn: string;
@@ -98,12 +99,40 @@ export class EcsServiceStack extends cdk.Stack {
       },
     });
 
+
+
     // ------------ CodePipeline ------------ //
     const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
       pipelineName: `${props.serviceName}-Pipeline`,
     });
 
     const sourceOutput = new codepipeline.Artifact();
+    const buildOutput = new codepipeline.Artifact();
+
+    // CodeBuild project to generate imagedefinitions.json
+    const buildProject = new codebuild.Project(this, 'BuildProject', {
+      projectName: `${props.serviceName}-build`,
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.STANDARD_5_0,
+        privileged: false,
+      },
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          build: {
+            commands: [
+              `echo 'Hello Start Build'`,
+              `ls`,
+              `echo '[{"name":"AppContainer","imageUri":"${ecrRepo.repositoryUri}:latest"}]' > imagedefinitions.json`,
+              'cat imagedefinitions.json'
+            ]
+          }
+        },
+        artifacts: {
+          files: ['imagedefinitions.json']
+        }
+      })
+    });
 
     pipeline.addStage({
       stageName: 'Source',
@@ -118,12 +147,24 @@ export class EcsServiceStack extends cdk.Stack {
     });
 
     pipeline.addStage({
+      stageName: 'Build',
+      actions: [
+        new actions.CodeBuildAction({
+          actionName: 'GenerateImageDefinitions',
+          project: buildProject,
+          input: sourceOutput,
+          outputs: [buildOutput],
+        }),
+      ],
+    });
+
+    pipeline.addStage({
       stageName: 'Deploy',
       actions: [
         new actions.EcsDeployAction({
-          actionName: 'BlueGreen-DeployECS',
+          actionName: 'DeployECS',
           service,
-          input: sourceOutput,
+          input: buildOutput,
         }),
       ],
     });
