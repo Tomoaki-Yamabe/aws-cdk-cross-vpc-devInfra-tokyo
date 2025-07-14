@@ -112,6 +112,16 @@ export class IsolatedInfraStack extends cdk.Stack {
         this.albDnsName = this.alb.loadBalancerDnsName;
         this.albArn = this.alb.loadBalancerArn;
 
+        // Create default ALB listener (required for NLB->ALB target group)
+        const albListener = this.alb.addListener('DefaultListener', {
+            port: 80,
+            protocol: elbv2.ApplicationProtocol.HTTP,
+            defaultAction: elbv2.ListenerAction.fixedResponse(200, {
+                contentType: 'text/plain',
+                messageBody: 'ALB Default Response',
+            }),
+        });
+
         // Create NLB target group with ALB as target
         const nlbToAlbTargetGroup = new elbv2.NetworkTargetGroup(this, 'NlbToAlbTargetGroup', {
             vpc: this.vpc,
@@ -120,7 +130,8 @@ export class IsolatedInfraStack extends cdk.Stack {
             targetType: elbv2.TargetType.ALB,
             healthCheck: {
                 port: '80',
-                protocol: elbv2.Protocol.TCP,
+                protocol: elbv2.Protocol.HTTP,
+                path: '/',
                 healthyThresholdCount: 2,
                 unhealthyThresholdCount: 2,
                 timeout: cdk.Duration.seconds(6),
