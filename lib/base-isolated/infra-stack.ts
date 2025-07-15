@@ -179,6 +179,37 @@ export class IsolatedInfraStack extends cdk.Stack {
             defaultTargetGroups: [nlbToAlbTargetGroup],
         });
 
+
+        // Create NLB TestTraffic target group with ALB as target
+        const nlbToAlbTargetGroupTestListner = new elbv2.NetworkTargetGroup(this, 'NlbToAlbTargetGroupTestListner', {
+            vpc: this.vpc,
+            port: 8080, // Default port for ALB communication
+            protocol: elbv2.Protocol.TCP,
+            targetType: elbv2.TargetType.ALB,
+            healthCheck: {
+                port: '8080',
+                protocol: elbv2.Protocol.HTTP,
+                path: '/',
+                healthyThresholdCount: 2,
+                unhealthyThresholdCount: 2,
+                timeout: cdk.Duration.seconds(6),
+                interval: cdk.Duration.seconds(30),
+            },
+        });
+
+        // Add ALB as target to NLB target group
+        nlbToAlbTargetGroupTestListner.addTarget(new targets.AlbArnTarget(this.alb.loadBalancerArn, 8080));
+
+        // Create default NLB listener that forwards to ALB
+        new elbv2.NetworkListener(this, 'NlbTestListener', {
+            loadBalancer: this.nlb,
+            port: 8080,
+            protocol: elbv2.Protocol.TCP,
+            defaultTargetGroups: [nlbToAlbTargetGroupTestListner],
+        });    
+        
+
+
         // Create Security Group for VPC endpoints    
         const ecrSg = new ec2.SecurityGroup(this,'IsoEcrSG',{
             vpc:this.vpc, 
