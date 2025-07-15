@@ -126,10 +126,29 @@ export class IsolatedInfraStack extends cdk.Stack {
             }),
         });
 
-        // Export ALB listener for service stacks to add rules
+        // Create test ALB listener for Blue/Green deployment validation
+        const albTestListener = this.alb.addListener('TestListener', {
+            port: 8080,
+            protocol: elbv2.ApplicationProtocol.HTTP,
+            defaultAction: elbv2.ListenerAction.fixedResponse(200, {
+                contentType: 'application/json',
+                messageBody: JSON.stringify({
+                    status: 'Test ALB listener is healthy',
+                    message: 'This is the test listener for Blue/Green deployments',
+                    timestamp: new Date().toISOString()
+                }),
+            }),
+        });
+
+        // Export ALB listeners for service stacks to add rules
         new ssm.StringParameter(this, 'AlbListenerArn', {
             parameterName: '/isolated/infra/alb/listener/arn',
             stringValue: albListener.listenerArn,
+        });
+
+        new ssm.StringParameter(this, 'AlbTestListenerArn', {
+            parameterName: '/isolated/infra/alb/test-listener/arn',
+            stringValue: albTestListener.listenerArn,
         });
 
         // Create NLB target group with ALB as target
