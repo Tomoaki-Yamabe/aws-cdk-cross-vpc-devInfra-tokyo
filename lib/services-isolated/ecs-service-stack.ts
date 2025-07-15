@@ -222,7 +222,7 @@ EOF`,
   "containerDefinitions": [
     {
       "name": "AppContainer",
-      "image": "<IMAGE1_URI>",
+      "image": "<IMAGE1_NAME>",
       "portMappings": [
         {
           "containerPort": ${props.containerPort},
@@ -285,6 +285,12 @@ EOF`,
           deploymentGroup: deploymentGroup,
           appSpecTemplateInput: buildOutput,
           taskDefinitionTemplateInput: buildOutput,
+          containerImageInputs: [
+            {
+              input: sourceOutput,
+              taskDefinitionPlaceholder: 'IMAGE1_NAME',
+            },
+          ],
         }),
       ],
     });
