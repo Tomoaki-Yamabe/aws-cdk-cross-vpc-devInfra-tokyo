@@ -112,14 +112,24 @@ export class IsolatedInfraStack extends cdk.Stack {
         this.albDnsName = this.alb.loadBalancerDnsName;
         this.albArn = this.alb.loadBalancerArn;
 
-        // Create default ALB listener (required for NLB->ALB target group)
+        // Create default ALB listener with path-based routing
         const albListener = this.alb.addListener('DefaultListener', {
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
             defaultAction: elbv2.ListenerAction.fixedResponse(200, {
-                contentType: 'text/plain',
-                messageBody: 'ALB Default Response',
+                contentType: 'application/json',
+                messageBody: JSON.stringify({
+                    status: 'ALB is healthy',
+                    message: 'Please use specific service paths for routing. Example paths: /s3control/docs*...',
+                    timestamp: new Date().toISOString()
+                }),
             }),
+        });
+
+        // Export ALB listener for service stacks to add rules
+        new ssm.StringParameter(this, 'AlbListenerArn', {
+            parameterName: '/isolated/infra/alb/listener/arn',
+            stringValue: albListener.listenerArn,
         });
 
         // Create NLB target group with ALB as target

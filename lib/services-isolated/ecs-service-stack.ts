@@ -13,12 +13,12 @@ import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 
 export interface EcsServiceStackProps extends cdk.StackProps {
   vpc: ec2.IVpc;
-  listenerPort: number;
   containerPort: number;
   ecrRepoName: string;
   serviceName: string;
   memoryLimitMiB: number;
   cpu: number;
+  servicePath: string; // パスベースルーティング用のパス（例: /chatbot/*）
 }
 
 export class EcsServiceStack extends cdk.Stack {
@@ -35,6 +35,7 @@ export class EcsServiceStack extends cdk.Stack {
     const albArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/arn');
     const albDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/dns');
     const albSecurityGroupId = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/security-group-id');
+    const albListenerArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/listener/arn');
     const nlbDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/nlb/dns');
 
     // Extract cluster name from ARN
@@ -67,13 +68,16 @@ export class EcsServiceStack extends cdk.Stack {
       resources: ['*'],
     }));
 
-
-    // inport ECR repository and defenition container
+    // import ECR repository and definition container
     const ecrRepo = ecr.Repository.fromRepositoryName(this, 'EcrRepo', props.ecrRepoName);
-    taskDef.addContainer('AppContainer', {  
+    
+    taskDef.addContainer('AppContainer', {
       image: ecs.ContainerImage.fromEcrRepository(ecrRepo, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: props.serviceName }),
       portMappings: [{ containerPort: props.containerPort }],
+      environment: {
+        SUB_PATH: props.servicePath.replace('/*', ''),
+      },
     });
 
     const fargateSg = new ec2.SecurityGroup(this, 'FargateServiceSG', {
@@ -83,12 +87,11 @@ export class EcsServiceStack extends cdk.Stack {
     });
 
     fargateSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcpRange(0, 65535), 'Allow all TCP from anywhere');
-    
 
-    // create Fargate survice
+    // create Fargate service
     const service = new ecs.FargateService(this, 'FargateService', {
       cluster: cluster,
-        taskDefinition: taskDef,
+      taskDefinition: taskDef,
       desiredCount: 2,
       assignPublicIp: false,
       securityGroups: [fargateSg],
@@ -130,12 +133,23 @@ export class EcsServiceStack extends cdk.Stack {
       },
     });
 
-    // Create ALB listener and associate with blue target group initially
-    const listener = new elbv2.ApplicationListener(this, `${props.serviceName}Listener`, {
-      loadBalancer: alb,
-      port: props.listenerPort,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      defaultTargetGroups: [blueTargetGroup],
+    // Import existing ALB listener and add path-based routing rule
+    const listener = elbv2.ApplicationListener.fromApplicationListenerAttributes(this, 'ImportedListener', {
+      listenerArn: albListenerArn,
+      securityGroup: ec2.SecurityGroup.fromSecurityGroupId(this, 'ImportedAlbSG', albSecurityGroupId),
+    });
+
+    // Add path-based routing rule to the existing listener
+    // Support both exact path match and wildcard pattern
+    const basePath = props.servicePath.replace('/*', '');
+    
+    new elbv2.ApplicationListenerRule(this, `${props.serviceName}ListenerRule`, {
+      listener: listener,
+      priority: this.generatePriority(props.servicePath),
+      conditions: [
+        elbv2.ListenerCondition.pathPatterns([basePath, props.servicePath])
+      ],
+      targetGroups: [blueTargetGroup],
     });
 
     // Register the service with the blue target group initially
@@ -143,8 +157,6 @@ export class EcsServiceStack extends cdk.Stack {
       containerName: 'AppContainer',
       containerPort: props.containerPort,
     }));
-
-
 
     // ------------ CodeDeploy for Blue/Green ------------ //
     const codeDeployApp = new codedeploy.EcsApplication(this, 'CodeDeployApp', {
@@ -173,7 +185,6 @@ export class EcsServiceStack extends cdk.Stack {
     const buildOutput = new codepipeline.Artifact();
 
     // CodeBuild project to generate deployment artifacts for Blue/Green
-    // ほんとは外部にbuild-speck.ymlとしておきたいけど、app.tsでfor文で回しているせいで内部に記述もっと良い方法があると思われ
     const buildProject = new codebuild.Project(this, 'BuildProject', {
       projectName: `${props.serviceName}-build`,
       environment: {
@@ -278,25 +289,37 @@ EOF`,
       ],
     });
 
-    // LinkedVPCへのPrivateLink接続は後で設定（一時的にコメントアウト）
-    // const endpointDns = ssm.StringParameter.valueForStringParameter(
-    //   this,
-    //   '/linked/infra/endpoint-service/endpoint-dns'
-    // );
-
     // output ssm parameter
     new ssm.StringParameter(this, `${props.serviceName}ConfigParameter`, {
       parameterName: `/services/${props.serviceName}/config`,
       stringValue: JSON.stringify({
         serviceName: props.serviceName,
-        nlbDnsName: nlbDnsName, // 一時的にIsolated側のNLB DNS名を使用
-        listenerPort: props.listenerPort,
+        nlbDnsName: nlbDnsName,
+        servicePath: props.servicePath,
         targetPort: props.containerPort,
       }),
+    });
+
+    new cdk.CfnOutput(this, `${props.serviceName}ServicePath`, {
+      value: props.servicePath,
+      description: `Service path for ${props.serviceName}`,
     });
 
     new cdk.CfnOutput(this, `${props.serviceName}AlbDnsName`, {
       value: albDnsName,
     });
+  }
+
+  // Generate priority based on service path for ALB listener rules
+  private generatePriority(servicePath: string): number {
+    // Simple hash-based priority generation to avoid conflicts
+    let hash = 0;
+    for (let i = 0; i < servicePath.length; i++) {
+      const char = servicePath.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Ensure priority is between 1 and 50000 (ALB limit)
+    return Math.abs(hash % 49999) + 1;
   }
 }
