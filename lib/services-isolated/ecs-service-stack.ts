@@ -139,6 +139,17 @@ export class EcsServiceStack extends cdk.Stack {
       securityGroup: ec2.SecurityGroup.fromSecurityGroupId(this, 'ImportedAlbSG', albSecurityGroupId),
     });
 
+    // Create test listener for Blue/Green deployment validation
+    const testListener = new elbv2.ApplicationListener(this, `${props.serviceName}TestListener`, {
+      loadBalancer: alb,
+      port: 8080,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      defaultAction: elbv2.ListenerAction.fixedResponse(404, {
+        contentType: 'text/plain',
+        messageBody: 'Test listener - no default target',
+      }),
+    });
+
     // Add path-based routing rule to the existing listener
     // Support both exact path match and wildcard pattern
     const basePath = props.servicePath.replace('/*', '');
@@ -150,6 +161,18 @@ export class EcsServiceStack extends cdk.Stack {
         elbv2.ListenerCondition.pathPatterns([basePath, props.servicePath])
       ],
       targetGroups: [blueTargetGroup],
+    });
+
+    // Add path-based routing rule to the test listener
+    // Note: Initially points to the same target group as production listener
+    // CodeDeploy will manage the routing during Blue/Green deployment
+    new elbv2.ApplicationListenerRule(this, `${props.serviceName}TestListenerRule`, {
+      listener: testListener,
+      priority: this.generatePriority(props.servicePath),
+      conditions: [
+        elbv2.ListenerCondition.pathPatterns([basePath, props.servicePath])
+      ],
+      targetGroups: [blueTargetGroup], // 最初はBlueターゲットグループを指定
     });
 
     // Register the service with the blue target group initially
@@ -168,12 +191,13 @@ export class EcsServiceStack extends cdk.Stack {
       service: service,
       blueGreenDeploymentConfig: {
         listener: listener,
+        testListener: testListener,
         blueTargetGroup: blueTargetGroup,
         greenTargetGroup: greenTargetGroup,
-        deploymentApprovalWaitTime: cdk.Duration.minutes(5),
+        deploymentApprovalWaitTime: cdk.Duration.minutes(5), // 5分間の検証時間（タイムアウトを防ぐため短縮）
         terminationWaitTime: cdk.Duration.minutes(5),
       },
-      deploymentConfig: codedeploy.EcsDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+      deploymentConfig: codedeploy.EcsDeploymentConfig.CANARY_10PERCENT_5MINUTES, // より安定したデプロイメント設定
     });
 
     // ------------ CodePipeline ------------ //
@@ -218,7 +242,7 @@ EOF`,
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "${props.cpu}",
   "memory": "${props.memoryLimitMiB}",
-  "executionRoleArn": "<TASK_EXECUTION_ROLE>",
+  "executionRoleArn": "${taskDef.executionRole?.roleArn}",
   "containerDefinitions": [
     {
       "name": "AppContainer",
@@ -277,6 +301,18 @@ EOF`,
       ],
     });
 
+    // Add manual approval stage before deployment
+    pipeline.addStage({
+      stageName: 'Approval',
+      actions: [
+        new actions.ManualApprovalAction({
+          actionName: 'ManualApproval',
+          additionalInformation: `Please review the changes and approve deployment for ${props.serviceName}. After deployment starts, you can test the Green environment using the test listener on port 8080.`,
+          externalEntityLink: `http://${albDnsName}:8080${basePath}`, // テスト用リンク
+        }),
+      ],
+    });
+
     pipeline.addStage({
       stageName: 'Deploy',
       actions: [
@@ -313,6 +349,16 @@ EOF`,
 
     new cdk.CfnOutput(this, `${props.serviceName}AlbDnsName`, {
       value: albDnsName,
+    });
+
+    new cdk.CfnOutput(this, `${props.serviceName}TestListenerUrl`, {
+      value: `http://${albDnsName}:8080${basePath}`,
+      description: `Test URL for Blue/Green deployment validation - ${props.serviceName}`,
+    });
+
+    new cdk.CfnOutput(this, `${props.serviceName}ProductionUrl`, {
+      value: `http://${albDnsName}${basePath}`,
+      description: `Production URL for ${props.serviceName}`,
     });
   }
 
