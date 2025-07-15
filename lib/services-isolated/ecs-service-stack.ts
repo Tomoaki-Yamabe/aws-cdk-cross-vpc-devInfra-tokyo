@@ -6,6 +6,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
@@ -36,6 +37,7 @@ export class EcsServiceStack extends cdk.Stack {
     const albDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/dns');
     const albSecurityGroupId = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/security-group-id');
     const albListenerArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/listener/arn');
+    const albTestListenerArn = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/alb/test-listener/arn');
     const nlbDnsName = ssm.StringParameter.valueForStringParameter(this, '/isolated/infra/nlb/dns');
 
     // Extract cluster name from ARN
@@ -71,9 +73,19 @@ export class EcsServiceStack extends cdk.Stack {
     // import ECR repository and definition container
     const ecrRepo = ecr.Repository.fromRepositoryName(this, 'EcrRepo', props.ecrRepoName);
     
+    // Create CloudWatch Log Group
+    const logGroup = new logs.LogGroup(this, 'LogGroup', {
+      logGroupName: `/aws/ecs/${props.serviceName}`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    
     taskDef.addContainer('AppContainer', {
       image: ecs.ContainerImage.fromEcrRepository(ecrRepo, 'latest'),
-      logging: ecs.LogDrivers.awsLogs({ streamPrefix: props.serviceName }),
+      logging: ecs.LogDrivers.awsLogs({
+        logGroup: logGroup,
+        streamPrefix: props.serviceName
+      }),
       portMappings: [{ containerPort: props.containerPort }],
       environment: {
         SUB_PATH: props.servicePath.replace('/*', ''),
@@ -111,9 +123,9 @@ export class EcsServiceStack extends cdk.Stack {
         port: `${props.containerPort}`,
         protocol: elbv2.Protocol.HTTP,
         healthyThresholdCount: 2,
-        unhealthyThresholdCount: 2,
-        timeout: cdk.Duration.seconds(5),
-        interval: cdk.Duration.seconds(30),
+        unhealthyThresholdCount: 5,
+        timeout: cdk.Duration.seconds(10),
+        interval: cdk.Duration.seconds(15),
       },
     });
 
@@ -127,9 +139,9 @@ export class EcsServiceStack extends cdk.Stack {
         port: `${props.containerPort}`,
         protocol: elbv2.Protocol.HTTP,
         healthyThresholdCount: 2,
-        unhealthyThresholdCount: 2,
-        timeout: cdk.Duration.seconds(5),
-        interval: cdk.Duration.seconds(30),
+        unhealthyThresholdCount: 5,
+        timeout: cdk.Duration.seconds(10),
+        interval: cdk.Duration.seconds(15),
       },
     });
 
@@ -139,15 +151,10 @@ export class EcsServiceStack extends cdk.Stack {
       securityGroup: ec2.SecurityGroup.fromSecurityGroupId(this, 'ImportedAlbSG', albSecurityGroupId),
     });
 
-    // Create test listener for Blue/Green deployment validation
-    const testListener = new elbv2.ApplicationListener(this, `${props.serviceName}TestListener`, {
-      loadBalancer: alb,
-      port: 8080,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      defaultAction: elbv2.ListenerAction.fixedResponse(404, {
-        contentType: 'text/plain',
-        messageBody: 'Test listener - no default target',
-      }),
+    // Import shared test listener from infra stack
+    const testListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(this, 'TestListener', {
+      listenerArn: albTestListenerArn,
+      securityGroup: ec2.SecurityGroup.fromSecurityGroupId(this, 'TestListenerSG', albSecurityGroupId),
     });
 
     // Add path-based routing rule to the existing listener
@@ -165,14 +172,14 @@ export class EcsServiceStack extends cdk.Stack {
 
     // Add path-based routing rule to the test listener
     // Note: Initially points to the same target group as production listener
-    // CodeDeploy will manage the routing during Blue/Green deployment
+    // Test listener routes to Green target group for Blue/Green deployment validation
     new elbv2.ApplicationListenerRule(this, `${props.serviceName}TestListenerRule`, {
       listener: testListener,
-      priority: this.generatePriority(props.servicePath),
+      priority: this.generatePriority(props.servicePath), // 本番リスナーと同じ動的優先度生成
       conditions: [
         elbv2.ListenerCondition.pathPatterns([basePath, props.servicePath])
       ],
-      targetGroups: [blueTargetGroup], // 最初はBlueターゲットグループを指定
+      targetGroups: [greenTargetGroup], // テストリスナーはGreenターゲットグループを指す
     });
 
     // Register the service with the blue target group initially
@@ -191,13 +198,11 @@ export class EcsServiceStack extends cdk.Stack {
       service: service,
       blueGreenDeploymentConfig: {
         listener: listener,
-        testListener: testListener,
         blueTargetGroup: blueTargetGroup,
         greenTargetGroup: greenTargetGroup,
-        deploymentApprovalWaitTime: cdk.Duration.minutes(5), // 5分間の検証時間（タイムアウトを防ぐため短縮）
-        terminationWaitTime: cdk.Duration.minutes(5),
+        terminationWaitTime: cdk.Duration.minutes(5), // 5分後に古いタスクセット終了
       },
-      deploymentConfig: codedeploy.EcsDeploymentConfig.CANARY_10PERCENT_5MINUTES, // より安定したデプロイメント設定
+      deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,
     });
 
     // ------------ CodePipeline ------------ //
@@ -260,7 +265,13 @@ EOF`,
           "awslogs-region": "ap-northeast-1",
           "awslogs-stream-prefix": "${props.serviceName}"
         }
-      }
+      },
+      "environment": [
+        {
+          "name": "SUB_PATH",
+          "value": "${props.servicePath.replace('/*', '')}"
+        }
+      ]
     }
   ]
 }
@@ -353,12 +364,17 @@ EOF`,
 
     new cdk.CfnOutput(this, `${props.serviceName}TestListenerUrl`, {
       value: `http://${albDnsName}:8080${basePath}`,
-      description: `Test URL for Blue/Green deployment validation - ${props.serviceName}`,
+      description: `Test URL for Green environment validation during Blue/Green deployment - ${props.serviceName}. CodeDeploy automatically routes this to Green taskset during deployment.`,
     });
 
     new cdk.CfnOutput(this, `${props.serviceName}ProductionUrl`, {
       value: `http://${albDnsName}${basePath}`,
-      description: `Production URL for ${props.serviceName}`,
+      description: `Production URL for ${props.serviceName} - Always points to active (Blue) environment`,
+    });
+
+    new cdk.CfnOutput(this, `${props.serviceName}DeploymentInstructions`, {
+      value: `Blue/Green Deployment Flow: 1) Deploy starts 2) Test Green environment at :8080 3) Wait ${cdk.Duration.minutes(10).toMinutes()} minutes 4) Auto-switch to production 5) Blue environment terminated`,
+      description: `Deployment instructions for ${props.serviceName}`,
     });
   }
 
@@ -374,4 +390,5 @@ EOF`,
     // Ensure priority is between 1 and 50000 (ALB limit)
     return Math.abs(hash % 49999) + 1;
   }
+
 }
