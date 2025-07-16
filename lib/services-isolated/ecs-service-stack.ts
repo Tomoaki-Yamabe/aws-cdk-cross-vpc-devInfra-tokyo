@@ -56,12 +56,78 @@ export class EcsServiceStack extends cdk.Stack {
       securityGroupId: albSecurityGroupId,
     });
 
+    // Create task role for application runtime permissions
+    const taskRole = new iam.Role(this, 'TaskRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: `Task role for ${props.serviceName} ECS service`,
+    });
+
+    // Add comprehensive policies to task role
+    taskRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        // S3 access
+        's3:ListAllMyBuckets',        // Required for list-buckets operation
+        's3:GetObject',
+        's3:PutObject',
+        's3:DeleteObject',
+        's3:ListBucket',
+        's3:GetBucketLocation',
+        's3:GetObjectVersion',
+        's3:DeleteObjectVersion',
+        's3:GetBucketVersioning',
+        's3:GetBucketAcl',
+        's3:GetBucketPolicy',
+        's3:GetBucketTagging',
+        's3:PutBucketTagging',
+
+        // Systems Manager Parameter Store
+        'ssm:GetParameter',
+        'ssm:GetParameters',
+        'ssm:GetParametersByPath',
+
+        // CloudWatch Logs
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+        'logs:DescribeLogStreams',
+        'logs:DescribeLogGroups',
+
+        // SES
+        'ses:SendEmail',
+        'ses:SendRawEmail',
+        // SNS
+        'sns:Publish',
+        // SQS
+        'sqs:SendMessage',
+        'sqs:ReceiveMessage',
+        'sqs:DeleteMessage',
+        'sqs:GetQueueAttributes',
+
+        // ECS (service-level or task metadata access)
+        'ecs:DescribeTasks',
+        'ecs:DescribeTaskDefinition',
+        'ecs:ListTasks',
+        'ecs:ListTaskDefinitions',
+        'ecs:DescribeClusters',
+
+        // EC2 (for metadata or if ECS with EC2 launch type interacts with EC2 directly)
+        'ec2:DescribeInstances',
+        'ec2:DescribeNetworkInterfaces',
+        'ec2:DescribeSecurityGroups',
+        'ec2:DescribeSubnets',
+        'ec2:DescribeVpcs',
+      ],
+      resources: ['*'],
+    }));
+
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       memoryLimitMiB: props.memoryLimitMiB,
       cpu: props.cpu,
+      taskRole: taskRole, // Add task role to task definition
     });
 
-    // create execution role for ECS task
+    // create execution role for ECS task (for ECR and CloudWatch Logs access during container startup)
     taskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
       actions: [
         'ecr:*',
@@ -200,7 +266,7 @@ export class EcsServiceStack extends cdk.Stack {
         listener: listener,
         blueTargetGroup: blueTargetGroup,
         greenTargetGroup: greenTargetGroup,
-        terminationWaitTime: cdk.Duration.minutes(5), // 5分後に古いタスクセット終了
+        terminationWaitTime: cdk.Duration.minutes(3),
       },
       deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,
     });
@@ -248,6 +314,7 @@ EOF`,
   "cpu": "${props.cpu}",
   "memory": "${props.memoryLimitMiB}",
   "executionRoleArn": "${taskDef.executionRole?.roleArn}",
+  "taskRoleArn": "${taskRole.roleArn}",
   "containerDefinitions": [
     {
       "name": "AppContainer",
