@@ -47,7 +47,7 @@ const services = [
     containerPort: 8000,
     memoryLimitMiB: 1024,
     cpu: 512,
-    serviceName: 'gets3data-service',
+    serviceName: 's3Control-service',
     servicePath: '/s3control/*',
   },
   {
