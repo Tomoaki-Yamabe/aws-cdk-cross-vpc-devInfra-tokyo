@@ -130,9 +130,26 @@ def get_linked_nlb_info():
 async def root():
     services = list_service_configs()
     html = "<html><head><title>Gateway API Server</title>"
-    html += "<style>body{font-family:Arial,sans-serif;margin:40px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background-color:#f2f2f2;}</style>"
-    html += "</head><body>"
-    html += "<h1>Hello! Gateway API Server</h1>"
+    html += """<style>
+        body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;margin:40px;background-color:#f8f9fa;color:#333;}
+        .container{max-width:1200px;margin:0 auto;background-color:white;padding:30px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+        h1{color:#2c3e50;border-bottom:3px solid #3498db;padding-bottom:10px;}
+        h2{color:#34495e;margin-top:30px;padding:10px;background-color:#ecf0f1;border-left:4px solid #3498db;border-radius:5px;}
+        h3{color:#2980b9;margin-top:20px;}
+        table{border-collapse:collapse;width:100%;margin:15px 0;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+        th,td{border:1px solid #bdc3c7;padding:12px;text-align:left;}
+        th{background-color:#3498db;color:white;font-weight:bold;}
+        tr:nth-child(even){background-color:#f8f9fa;}
+        tr:hover{background-color:#e8f4f8;}
+        a{color:#2980b9;text-decoration:none;font-weight:bold;}
+        a:hover{color:#1abc9c;text-decoration:underline;}
+        code{background-color:#ecf0f1;padding:2px 6px;border-radius:3px;font-family:'Courier New',monospace;color:#e74c3c;}
+        .info-box{background-color:#f8f9fa;padding:15px;border-radius:5px;margin:10px 0;border-left:4px solid #3498db;}
+        .status-badge{padding:4px 8px;border-radius:12px;font-size:12px;font-weight:bold;}
+        .status-active{background-color:#2ecc71;color:white;}
+        .status-inactive{background-color:#e74c3c;color:white;}
+    </style>"""
+    html += "</head><body><div class='container'>"
     html += "<h1>🚀 Gateway API Server</h1>"
     
     # Get connection information
@@ -186,15 +203,37 @@ async def root():
     
     # Connection Information
     html += "<h2>🔗 Connection Information</h2>"
+    html += "<div class='info-box'>"
+    
+    # Linked VPC Endpoint Information
+    html += "<h3>📡 Linked VPC Endpoint</h3>"
+    html += f"<p><strong>DNS Name:</strong> <code>{vpc_endpoint_info['dns']}</code></p>"
+    html += f"<p><strong>IP Addresses:</strong> <code>{vpc_endpoint_info['ips']}</code></p>"
+    
+    # Linked NLB Information
+    html += "<h3>⚖️ Linked NLB</h3>"
+    html += f"<p><strong>DNS Name:</strong> <code>{linked_nlb_info['dns']}</code></p>"
+    html += f"<p><strong>IP Addresses:</strong> <code>{linked_nlb_info['ips']}</code></p>"
+    
+    # Isolated NLB Information
+    html += "<h3>⚖️ Isolated NLB</h3>"
+    html += f"<p><strong>DNS Name:</strong> <code>{isolated_nlb_info['dns']}</code></p>"
+    html += f"<p><strong>IP Addresses:</strong> <code>{isolated_nlb_info['ips']}</code></p>"
+    
+    # Isolated ALB Information
+    html += "<h3>🔄 Isolated ALB</h3>"
+    html += f"<p><strong>DNS Name:</strong> <code>{alb_info['dns']}</code></p>"
+    html += f"<p><strong>IP Addresses:</strong> <code>{alb_info['ips']}</code></p>"
+    
+    html += "</div>"
+    
+    # API Usage Information
+    html += "<h2>📋 API Usage</h2>"
+    html += "<div class='info-box'>"
     html += "<p><strong>API Endpoint:</strong> <code>http://&lt;this-server&gt;:8080/api/&lt;service-name&gt;/&lt;path&gt;</code></p>"
     html += "<p><strong>Example:</strong> <code>http://&lt;this-server&gt;:8080/api/gets3data-service/health</code></p>"
-    
-    # PrivateLink Information
-    html += "<h2>🔗 PrivateLink Connection Details</h2>"
-    html += "<p><strong>VPC Endpoint DNS:</strong> <code>" + vpc_endpoint_dns + "</code></p>"
-    html += "<p><strong>VPC Endpoint IPs:</strong> <code>" + vpc_endpoint_ips + "</code></p>"
-    html += "<p><strong>Example:</strong> <code>http://10.213.66.188:50001/docs</code></p>" 
-    html += "<p><em>Note: Proxy server routes traffic to Isolated VPC services via PrivateLink VPC Endpoint</em></p>"
+    html += "<p><em>Note: Proxy server routes traffic to Isolated VPC services via PrivateLink VPC Endpoint and ALB with priority routing (ALB → VPC Endpoint → NLB)</em></p>"
+    html += "</div>"
     
     # On-Prem Services Section (with error handling)
     html += "<h2>🏢 On-Premises Services</h2>"
