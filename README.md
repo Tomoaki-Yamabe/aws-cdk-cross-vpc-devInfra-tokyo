@@ -16,6 +16,22 @@
 - AWS CDK v2
 - AWS アカウントと適切な権限
 
+## Application information
+[このCDKに含まれるLinkedのProxyサーバーのリンク](http://10.213.111.213:8080/)
+
+
+## リポジトリ情報
+
+### メインリポジトリ
+URL: Yamabe Git Hub
+用途: 開発・メンテナンス用のメインブランチ
+
+
+### ダウンストリームリポジトリ
+URL: http://172.23.11.223/XILS_SILS_TEAM/dx8d_idp_team/cloudformationstacks/develop/mirrorondemand-aws-cdk-cross-vpc-devinfra-tokyo.git
+用途: GitLabで見れるようにするためだけの共有用
+
+
 ## セットアップ手順
 
 ### Windows環境でのセットアップ
