@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 import boto3, httpx, json, socket
 
 app = FastAPI(title="Gateway API", docs_url=None, redoc_url=None)
@@ -57,6 +57,74 @@ def get_nlb_ip_addresses(dns_name):
         return f"DNS解決エラー: {str(e)}"
 
 
+# Get ALB information from SSM Parameter Store
+def get_alb_info():
+    """
+    Get ALB DNS name and IP addresses from SSM Parameter Store
+    Returns a dictionary with ALB DNS and IPs
+    """
+    alb_info = {"dns": "N/A", "ips": "N/A"}
+    try:
+        alb_dns = ssm.get_parameter(Name='/isolated/infra/alb/dns')['Parameter']['Value']
+        alb_info["dns"] = alb_dns
+        alb_info["ips"] = get_nlb_ip_addresses(alb_dns)
+    except:
+        pass
+    return alb_info
+
+
+# Get VPC Endpoint information
+def get_vpc_endpoint_info():
+    """
+    Get VPC Endpoint DNS name and IP addresses from SSM Parameter Store
+    Returns a dictionary with VPC Endpoint DNS and IPs
+    """
+    endpoint_info = {"dns": "N/A", "ips": "N/A"}
+    try:
+        endpoint_dns = ssm.get_parameter(Name='/linked/infra/privatelink/endpoint')['Parameter']['Value']
+        endpoint_info["dns"] = endpoint_dns
+        endpoint_info["ips"] = get_nlb_ip_addresses(endpoint_dns)
+    except:
+        pass
+    return endpoint_info
+
+
+# Get Isolated NLB information
+def get_isolated_nlb_info():
+    """
+    Get Isolated NLB DNS name and IP addresses from SSM Parameter Store
+    Returns a dictionary with NLB DNS and IPs
+    """
+    nlb_info = {"dns": "N/A", "ips": "N/A"}
+    try:
+        nlb_dns = ssm.get_parameter(Name='/isolated/infra/nlb/dns')['Parameter']['Value']
+        nlb_info["dns"] = nlb_dns
+        nlb_info["ips"] = get_nlb_ip_addresses(nlb_dns)
+    except:
+        pass
+    return nlb_info
+
+
+# Get Linked NLB information
+def get_linked_nlb_info():
+    """
+    Get Linked NLB DNS name and IP addresses from SSM Parameter Store
+    Returns a dictionary with NLB DNS and IPs
+    """
+    nlb_info = {"dns": "N/A", "ips": "N/A"}
+    try:
+        nlb_dns = ssm.get_parameter(Name='/linked/infra/nlb/dns')['Parameter']['Value']
+        nlb_info["dns"] = nlb_dns
+        nlb_info["ips"] = get_nlb_ip_addresses(nlb_dns)
+    except:
+        pass
+    return nlb_info
+
+
+# Note: ECR repository and CodePipeline information are now retrieved directly from SSM parameters
+# in the service configuration JSON, eliminating the need for separate lookup functions.
+
+
 # Root Page
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -65,37 +133,53 @@ async def root():
     html += "<style>body{font-family:Arial,sans-serif;margin:40px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background-color:#f2f2f2;}</style>"
     html += "</head><body>"
     html += "<h1>Hello! Gateway API Server</h1>"
+    html += "<h1>🚀 Gateway API Server</h1>"
+    
+    # Get connection information
+    vpc_endpoint_info = get_vpc_endpoint_info()
+    isolated_nlb_info = get_isolated_nlb_info()
+    linked_nlb_info = get_linked_nlb_info()
+    alb_info = get_alb_info()
     
     # Available Services Section
-    html += "<h2> Available Backend Services</h2>"
+    html += "<h2>🚀 Available Backend Services</h2>"
     if services:
-        html += "<table><tr><th>Service Name</th><th>Isolated NLB DNS</th><th>Linked VPC Endpoint IPs</th><th>Listner Port</th><th>Target Port</th><th>API Docs</th></tr>"
-        
-        # Get VPC Endpoint DNS from SSM
-        vpc_endpoint_dns = "N/A"
-        try:
-            vpc_endpoint_dns = ssm.get_parameter(Name='/linked/infra/privatelink/endpoint')['Parameter']['Value']
-        except:
-            pass
-        
-        vpc_endpoint_ips = get_nlb_ip_addresses(vpc_endpoint_dns)
-        
-        # Get LinkedVPC NLB DNS from SSM
-        linked_nlb_dns = "N/A"
-        try:
-            linked_nlb_dns = ssm.get_parameter(Name='/linked/infra/nlb/dns')['Parameter']['Value']
-        except:
-            pass
-        
-        linked_nlb_ips = get_nlb_ip_addresses(linked_nlb_dns)
+        html += "<table><tr><th>Service Name</th><th>ALBパスルール</th><th>Target Port</th><th>Swagger Docs</th><th>Swagger Redoc</th><th>ECR Repository</th><th>CodePipeline</th></tr>"
         
         for s in services:
             name = s.get("serviceName", "Unknown")
-            nlb_dns = s.get("nlbDnsName", "N/A")
-            listener_port = s.get("listenerPort", "N/A")
+            path_rule = s.get("pathRule", s.get("servicePath", "N/A"))  # pathRuleを優先、フォールバックでservicePath
             target_port = s.get("targetPort", "N/A")
-            html += f'<tr><td>{name}</td><td>{nlb_dns}</td><td>{vpc_endpoint_ips}</td><td>{listener_port}</td><td>{target_port}</td>'
-            html += f'<td><a href="/docs/{name}">Swagger UI</a></td></tr>'
+            ecr_url = s.get("ecrRepo", "N/A")
+            pipeline_url = s.get("pipelineUrl", "N/A")
+            
+            html += f'<tr><td>{name}</td><td>{path_rule}</td><td>{target_port}</td>'
+            
+            # Linked VPC Endpoint IP経由でSwagger UIとReDocにリンク
+            base_path = path_rule.replace('/*', '') if path_rule != "N/A" else name
+            # VPC Endpoint IPsから最初のIPアドレスを取得（カンマ区切りの場合）
+            vpc_endpoint_ip = vpc_endpoint_info["ips"].split(",")[0].strip() if vpc_endpoint_info["ips"] != "N/A" else "N/A"
+            
+            if vpc_endpoint_ip != "N/A":
+                html += f'<td><a href="http://{vpc_endpoint_ip}{base_path}/docs" target="_blank">Swagger UI</a></td>'
+                html += f'<td><a href="http://{vpc_endpoint_ip}{base_path}/redoc" target="_blank">ReDoc</a></td>'
+            else:
+                html += f'<td>N/A</td>'
+                html += f'<td>N/A</td>'
+            
+            # ECRリポジトリリンク
+            if ecr_url != "N/A":
+                html += f'<td><a href="{ecr_url}" target="_blank">ECR</a></td>'
+            else:
+                html += f'<td>N/A</td>'
+            
+            # CodePipelineリンク
+            if pipeline_url != "N/A":
+                html += f'<td><a href="{pipeline_url}" target="_blank">Pipeline</a></td>'
+            else:
+                html += f'<td>N/A</td>'
+            
+            html += '</tr>'
         html += "</table>"
     else:
         html += "<p>No services configured yet.</p>"
@@ -136,7 +220,7 @@ async def root():
             html += f"<tr><td>{service_name}</td><td>{endpoint}</td></tr>"
         html += "</table>"
     
-    html += "</body></html>"
+    html += "</div></body></html>"
     return HTMLResponse(html)
 
 
@@ -148,21 +232,35 @@ def get_vpc_endpoint_dns():
     except:
         return None
 
-# Reverse Proxy API Router
+# Get ALB DNS for routing
+def get_alb_dns():
+    """Get ALB DNS from SSM Parameter Store"""
+    try:
+        return ssm.get_parameter(Name='/isolated/infra/alb/dns')['Parameter']['Value']
+    except:
+        return None
+
+# Reverse Proxy API Router with ALB support
 @app.api_route("/api/{service_name}/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS"])
 async def proxy(service_name: str, path: str, request: Request):
 
     # Get target service configuration from SSM Parameter Store
     cfg = next((s for s in list_service_configs() if s.get("serviceName")==service_name), None)
     if not cfg:
-        return JSONResponse({"error":"service not found preace check service"}, status_code=404)
+        return JSONResponse({"error":"service not found please check service"}, status_code=404)
 
-    # Use VPC Endpoint DNS for routing to Isolated VPC services
+    # Priority routing: ALB -> VPC Endpoint -> NLB
+    alb_dns = get_alb_dns()
     vpc_endpoint_dns = get_vpc_endpoint_dns()
-    if vpc_endpoint_dns:
+    
+    if alb_dns:
+        # Use ALB for routing with path-based routing
+        target = f"http://{alb_dns}/{service_name}/{path}"
+    elif vpc_endpoint_dns:
+        # Use VPC Endpoint DNS for routing to Isolated VPC services
         target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/{path}"
     else:
-        # Fallback to NLB DNS if VPC endpoint is not available
+        # Fallback to NLB DNS if ALB and VPC endpoint are not available
         target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/{path}"
     
     req = await request.body()
@@ -174,14 +272,14 @@ async def proxy(service_name: str, path: str, request: Request):
                                     content=req,
                                     params=request.query_params)
 
-    # return respone to client originaly
+    # return response to client originally
     return Response(content=resp.content, status_code=resp.status_code, headers=resp.headers)
 
 
-# OpenAPI defauilt Defenition for each service.
-# Connect to the OpenAPI of each microservice to display Swagger UI
-@app.get("/openapi/{service_name}.json", response_class=Response)
-async def proxy_openapi(service_name: str):
+# Direct ALB routing for OpenAPI JSON
+@app.get("/{service_name}/openapi.json", response_class=Response)
+async def proxy_openapi_direct(service_name: str):
+    """Direct routing to service OpenAPI via ALB"""
     cfg = next((s for s in list_service_configs() if s["serviceName"] == service_name), None)
 
     if not cfg:
@@ -191,12 +289,18 @@ async def proxy_openapi(service_name: str):
             status_code=404
         )
 
-    # Use VPC Endpoint DNS for routing to Isolated VPC services
+    # Priority routing: ALB -> VPC Endpoint -> NLB
+    alb_dns = get_alb_dns()
     vpc_endpoint_dns = get_vpc_endpoint_dns()
-    if vpc_endpoint_dns:
+    
+    if alb_dns:
+        # Use ALB for routing with path-based routing
+        target = f"http://{alb_dns}/{service_name}/openapi.json"
+    elif vpc_endpoint_dns:
+        # Use VPC Endpoint DNS for routing to Isolated VPC services
         target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/openapi.json"
     else:
-        # Fallback to NLB DNS if VPC endpoint is not available
+        # Fallback to NLB DNS if ALB and VPC endpoint are not available
         target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/openapi.json"
 
     async with httpx.AsyncClient() as client:
@@ -209,9 +313,103 @@ async def proxy_openapi(service_name: str):
     )
 
 
-# Swagger UI for each service
+# Legacy OpenAPI default Definition for each service (for backward compatibility)
+@app.get("/openapi/{service_name}.json", response_class=Response)
+async def proxy_openapi_legacy(service_name: str):
+    cfg = next((s for s in list_service_configs() if s["serviceName"] == service_name), None)
+
+    if not cfg:
+        return Response(
+            content=b'{"error":"service not found"}',
+            media_type="application/json",
+            status_code=404
+        )
+
+    # Priority routing: ALB -> VPC Endpoint -> NLB
+    alb_dns = get_alb_dns()
+    vpc_endpoint_dns = get_vpc_endpoint_dns()
+    
+    if alb_dns:
+        # Use ALB for routing with path-based routing
+        target = f"http://{alb_dns}/{service_name}/openapi.json"
+    elif vpc_endpoint_dns:
+        # Use VPC Endpoint DNS for routing to Isolated VPC services
+        target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/openapi.json"
+    else:
+        # Fallback to NLB DNS if ALB and VPC endpoint are not available
+        target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/openapi.json"
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(target, timeout=10.0)
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type="application/json"
+    )
+
+
+# Direct ALB routing for Swagger UI
+@app.get("/{service_name}/docs", response_class=Response)
+async def service_docs_direct(service_name: str, request: Request):
+    """Direct routing to service docs via ALB"""
+    cfg = next((s for s in list_service_configs() if s.get("serviceName")==service_name), None)
+    if not cfg:
+        return HTMLResponse(f"<h2>Service '{service_name}' not found</h2>", status_code=404)
+
+    # Priority routing: ALB -> VPC Endpoint -> NLB
+    alb_dns = get_alb_dns()
+    vpc_endpoint_dns = get_vpc_endpoint_dns()
+    
+    if alb_dns:
+        target = f"http://{alb_dns}/{service_name}/docs"
+    elif vpc_endpoint_dns:
+        target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/docs"
+    else:
+        target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/docs"
+    
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(target, timeout=10.0)
+    
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=resp.headers
+    )
+
+
+# Direct ALB routing for ReDoc
+@app.get("/{service_name}/redoc", response_class=Response)
+async def service_redoc_direct(service_name: str, request: Request):
+    """Direct routing to service redoc via ALB"""
+    cfg = next((s for s in list_service_configs() if s.get("serviceName")==service_name), None)
+    if not cfg:
+        return HTMLResponse(f"<h2>Service '{service_name}' not found</h2>", status_code=404)
+
+    # Priority routing: ALB -> VPC Endpoint -> NLB
+    alb_dns = get_alb_dns()
+    vpc_endpoint_dns = get_vpc_endpoint_dns()
+    
+    if alb_dns:
+        target = f"http://{alb_dns}/{service_name}/redoc"
+    elif vpc_endpoint_dns:
+        target = f"http://{vpc_endpoint_dns}:{cfg['listenerPort']}/redoc"
+    else:
+        target = f"http://{cfg['nlbDnsName']}:{cfg['listenerPort']}/redoc"
+    
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(target, timeout=10.0)
+    
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=resp.headers
+    )
+
+
+# Legacy Swagger UI for each service (for backward compatibility)
 @app.get("/docs/{service_name}", response_class=HTMLResponse)
-async def service_docs(service_name: str):
+async def service_docs_legacy(service_name: str):
     cfg = next((s for s in list_service_configs() if s.get("serviceName")==service_name), None)
     if not cfg:
         return HTMLResponse(f"<h2>Service '{service_name}' not found</h2>", status_code=404)
@@ -219,7 +417,21 @@ async def service_docs(service_name: str):
     openapi_url = f"/openapi/{service_name}.json"
     return get_swagger_ui_html(
         openapi_url=openapi_url,
-        title=f"{service_name} API Docs"
+        title=f"{service_name} API Docs - Swagger UI"
+    )
+
+
+# Legacy ReDoc for each service (for backward compatibility)
+@app.get("/redoc/{service_name}", response_class=HTMLResponse)
+async def service_redoc_legacy(service_name: str):
+    cfg = next((s for s in list_service_configs() if s.get("serviceName")==service_name), None)
+    if not cfg:
+        return HTMLResponse(f"<h2>Service '{service_name}' not found</h2>", status_code=404)
+
+    openapi_url = f"/openapi/{service_name}.json"
+    return get_redoc_html(
+        openapi_url=openapi_url,
+        title=f"{service_name} API Docs - ReDoc"
     )
 
 

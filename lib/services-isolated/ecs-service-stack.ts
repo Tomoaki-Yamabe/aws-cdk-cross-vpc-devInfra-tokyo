@@ -417,6 +417,10 @@ EOF`,
         nlbDnsName: nlbDnsName,
         servicePath: props.servicePath,
         targetPort: props.containerPort,
+        ecrRepo: `https://ap-northeast-1.console.aws.amazon.com/ecr/repositories/private/${cdk.Stack.of(this).account}/${props.ecrRepoName}`,
+        pipelineUrl: `https://ap-northeast-1.console.aws.amazon.com/codesuite/codepipeline/pipelines/${props.serviceName}-Pipeline/view`,
+        listenerPort: props.containerPort,
+        pathRule: props.servicePath,
       }),
     });
 
