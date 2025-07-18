@@ -67,5 +67,82 @@ export class DcvImageBuilderStack extends cdk.Stack {
     );
 
 
+    // ------------------ Image Builder ------------------ //
+    // Create DCV Gateway installation component
+    const dcvInstallComponent = new imagebuilder.CfnComponent(this, 'DcvGatewayInstallComponent', {
+      name: 'install-dcv-gateway',
+      version: '1.0.0',
+      platform: 'Linux',
+      description: 'Install and configure NICE DCV Gateway',
+      data: `
+name: install-dcv-gateway
+description: Install and configure NICE DCV Gateway
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: update-system
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Updating system packages..."
+            - yum update -y
+            - yum install -y wget curl
+      
+      - name: install-dcv-gateway
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Installing NICE DCV Gateway..."
+            - cd /tmp
+            - wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
+            - yum install -y ./nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
+            - rm -f ./nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
+      
+      - name: configure-dcv-gateway
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Configuring NICE DCV Gateway..."
+            - /opt/nice-dcv-gateway/bin/dcv-gateway-setup --mode gateway --session-manager-host localhost
+            - systemctl enable dcv-gateway
+            - echo "DCV Gateway installation and configuration completed"
+      
+      - name: security-hardening
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Applying security hardening..."
+            - # Remove unnecessary packages
+            - yum remove -y wget curl
+            - yum autoremove -y
+            - # Clear package cache
+            - yum clean all
+            - # Clear temporary files
+            - rm -rf /tmp/*
+            - rm -rf /var/tmp/*
+            - echo "Security hardening completed"
+
+  - name: validate
+    steps:
+      - name: verify-installation
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Verifying DCV Gateway installation..."
+            - test -f /opt/nice-dcv-gateway/bin/dcv-gateway
+            - systemctl is-enabled dcv-gateway
+            - echo "DCV Gateway verification completed successfully"
+      `,
+      tags: {
+        Project: 'EliteGen2',
+        Environment: 'Production',
+        OwnedBy: 'YAMABE',
+        ManagedBy: 'CloudFormation',
+        Service: 'DCV-Gateway',
+      },
+    });
+
+
   }
 }
