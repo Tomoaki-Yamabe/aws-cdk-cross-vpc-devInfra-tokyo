@@ -309,5 +309,25 @@ phases:
       description: 'Security Group ID for DCV Gateway Image Builder',
     });
 
+    
+    // ------------------  Cfn Export ------------------ //
+    new cdk.CfnOutput(this, 'DcvImageRecipeArnOutput', {
+      value: this.imageRecipeArn,
+      description: 'ARN of the DCV Gateway Image Recipe',
+      exportName: 'DcvImageRecipeArn',
+    });
+
+    new cdk.CfnOutput(this, 'DcvImagePipelineArnOutput', {
+      value: this.pipelineArn,
+      description: 'ARN of the DCV Gateway Image Pipeline',
+      exportName: 'DcvImagePipelineArn',
+    });
+
+    new cdk.CfnOutput(this, 'DcvInstanceProfileNameOutput', {
+      value: instanceProfile.instanceProfileName!,
+      description: 'Name of the DCV Gateway Image Builder Instance Profile',
+      exportName: 'DcvInstanceProfileName',
+    });
+
   }
 }
