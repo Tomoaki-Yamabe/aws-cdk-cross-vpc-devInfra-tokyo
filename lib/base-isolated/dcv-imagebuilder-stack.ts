@@ -178,5 +178,73 @@ phases:
     this.imageRecipeArn = imageRecipe.attrArn;
 
 
+    // Create infrastructure configuration
+    const infrastructureConfig = new imagebuilder.CfnInfrastructureConfiguration(
+      this,
+      'DcvGatewayInfrastructureConfig',
+      {
+        name: 'dcv-gateway-infrastructure-config',
+        description: 'Infrastructure configuration for DCV Gateway Image Builder',
+        instanceTypes: ['m6i.large'], // Use modern instance type
+        subnetId: subnets[0].subnetId, // Use first subnet
+        securityGroupIds: [imageBuilderSg.securityGroupId],
+        terminateInstanceOnFailure: true,
+        instanceProfileName: instanceProfile.instanceProfileName!,
+        // Enable IMDSv2 for security
+        instanceMetadataOptions: {
+          httpTokens: 'required',
+          httpPutResponseHopLimit: 1,
+        },
+        // Enable detailed monitoring
+        logging: {
+          s3Logs: {
+            s3BucketName: `dcv-imagebuilder-logs-${this.account}-${this.region}`,
+            s3KeyPrefix: 'dcv-gateway-logs/',
+          },
+        },
+        tags: {
+          Project: 'EliteGen2',
+          Environment: 'Production',
+          OwnedBy: 'YAMABE',
+          ManagedBy: 'CloudFormation',
+          Service: 'DCV-Gateway',
+        },
+      }
+    );
+
+
+
+    // Create image pipeline
+    const imagePipeline = new imagebuilder.CfnImagePipeline(this, 'DcvGatewayImagePipeline', {
+      name: 'dcv-gateway-image-pipeline',
+      description: 'Image pipeline for NICE DCV Gateway',
+      imageRecipeArn: imageRecipe.attrArn,
+      infrastructureConfigurationArn: infrastructureConfig.attrArn,
+      distributionConfigurationArn: distributionConfig.attrArn,
+      status: 'ENABLED',
+      // Schedule to run weekly on Sunday at 3:00 AM UTC for security updates
+      schedule: {
+        scheduleExpression: 'cron(0 3 ? * SUN *)',
+        pipelineExecutionStartCondition: 'EXPRESSION_MATCH_AND_DEPENDENCY_UPDATES_AVAILABLE',
+      },
+      // Enable enhanced image metadata
+      enhancedImageMetadataEnabled: true,
+      // Enable image scanning for security vulnerabilities
+      imageTestsConfiguration: {
+        imageTestsEnabled: true,
+        timeoutMinutes: 720, // 12 hours timeout
+      },
+      tags: {
+        Project: 'EliteGen2',
+        Environment: 'Production',
+        OwnedBy: 'YAMABE',
+        ManagedBy: 'CloudFormation',
+        Service: 'DCV-Gateway',
+      },
+    });
+
+    this.pipelineArn = imagePipeline.attrArn;
+
+
   }
 }
