@@ -212,6 +212,43 @@ phases:
       }
     );
 
+    // Add explicit dependency to ensure Instance Profile is created first
+    infrastructureConfig.addDependency(instanceProfile);
+
+
+    // Create distribution configuration
+    const distributionConfig = new imagebuilder.CfnDistributionConfiguration(
+      this,
+      'DcvGatewayDistributionConfig',
+      {
+        name: 'dcv-gateway-distribution-config',
+        description: 'Distribution configuration for DCV Gateway AMI',
+        distributions: [
+          {
+            region: this.region,
+            amiDistributionConfiguration: {
+              name: `DCV-Gateway-AMI-{{ imagebuilder:buildDate }}`,
+              description: 'NICE DCV Gateway AMI built with Image Builder',
+              amiTags: {
+                Project: 'EliteGen2',
+                Environment: 'Production',
+                OwnedBy: 'YAMABE',
+                ManagedBy: 'CloudFormation',
+                Service: 'DCV-Gateway',
+                BuildDate: '{{ imagebuilder:buildDate }}',
+              },
+            },
+          },
+        ],
+        tags: {
+          Project: 'EliteGen2',
+          Environment: 'Production',
+          OwnedBy: 'YAMABE',
+          ManagedBy: 'CloudFormation',
+          Service: 'DCV-Gateway',
+        },
+      }
+    );
 
 
     // Create image pipeline
@@ -246,5 +283,6 @@ phases:
     this.pipelineArn = imagePipeline.attrArn;
 
 
+    
   }
 }
