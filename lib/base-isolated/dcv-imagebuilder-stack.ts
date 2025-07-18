@@ -144,5 +144,39 @@ phases:
     });
 
 
+    // Create image recipe
+    const imageRecipe = new imagebuilder.CfnImageRecipe(this, 'DcvGatewayImageRecipe', {
+      name: 'dcv-gateway-recipe',
+      version: '1.0.0',
+      description: 'Image recipe for NICE DCV Gateway',
+      components: [
+        {
+          componentArn: dcvInstallComponent.attrArn,
+        },
+      ],
+      parentImage: `arn:aws:imagebuilder:${this.region}:aws:image/amazon-linux-2-x86/x.x.x`,
+      blockDeviceMappings: [
+        {
+          deviceName: '/dev/xvda',
+          ebs: {
+            volumeSize: 30,
+            volumeType: 'gp3',
+            encrypted: true, // Enable encryption for security
+            deleteOnTermination: true,
+          },
+        },
+      ],
+      tags: {
+        Project: 'EliteGen2',
+        Environment: 'Production',
+        OwnedBy: 'YAMABE',
+        ManagedBy: 'CloudFormation',
+        Service: 'DCV-Gateway',
+      },
+    });
+
+    this.imageRecipeArn = imageRecipe.attrArn;
+
+
   }
 }
