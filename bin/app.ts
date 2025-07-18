@@ -5,6 +5,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { IsolatedInfraStack } from '../lib/base-isolated/infra-stack';
 import { LinkedInfraStack } from '../lib/base-linked/infra-stack';
 import { EcsServiceStack } from '../lib/services-isolated/ecs-service-stack';
+import { DcvImageBuilderStack } from '../lib/base-isolated/dcv-imagebuilder-stack';
 
 const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'ap-northeast-1' };
@@ -30,7 +31,17 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
   ],
 });
 
-// Services
+// ----------------------- DCV Image Builder ----------------------- //
+// Create DCV Gateway Image Builder stack
+new DcvImageBuilderStack(app, 'XILS-DcvImageBuilderStack', {
+  env,
+  vpcId: 'vpc-0e7cbf03a96f57ed9', // Same as isolated VPC
+  subnetIds: [
+    'subnet-0946dbacc0fa49edc', // Use first isolated subnet for Image Builder
+  ],
+});
+
+// ----------------------- ECS Services ----------------------- //
 const services = [
   {
     id: 'ChatbotService',
