@@ -283,6 +283,31 @@ phases:
     this.pipelineArn = imagePipeline.attrArn;
 
 
-    
+    // ------------------  SSM Param ------------------ //
+    // Store important values in SSM Parameter Store
+    new ssm.StringParameter(this, 'DcvImageRecipeArn', {
+      parameterName: '/isolated/dcv/imagebuilder/recipe/arn',
+      stringValue: this.imageRecipeArn,
+      description: 'ARN of the DCV Gateway Image Recipe',
+    });
+
+    new ssm.StringParameter(this, 'DcvImagePipelineArn', {
+      parameterName: '/isolated/dcv/imagebuilder/pipeline/arn',
+      stringValue: this.pipelineArn,
+      description: 'ARN of the DCV Gateway Image Pipeline',
+    });
+
+    new ssm.StringParameter(this, 'DcvInstanceProfileName', {
+      parameterName: '/isolated/dcv/imagebuilder/instance-profile/name',
+      stringValue: instanceProfile.instanceProfileName!,
+      description: 'Name of the DCV Gateway Image Builder Instance Profile',
+    });
+
+    new ssm.StringParameter(this, 'DcvSecurityGroupId', {
+      parameterName: '/isolated/dcv/imagebuilder/security-group/id',
+      stringValue: imageBuilderSg.securityGroupId,
+      description: 'Security Group ID for DCV Gateway Image Builder',
+    });
+
   }
 }
