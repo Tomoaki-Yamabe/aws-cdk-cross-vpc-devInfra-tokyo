@@ -4,6 +4,7 @@ import * as imagebuilder from 'aws-cdk-lib/aws-imagebuilder';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 
 interface DcvImageBuilderStackProps extends cdk.StackProps {
   vpcId: string;
@@ -36,6 +37,22 @@ export class DcvImageBuilderStack extends cdk.Stack {
       })
     );
 
+    // Create S3 bucket for Image Builder logs
+    const logsBucket = new s3.Bucket(this, 'DcvImageBuilderLogsBucket', {
+      bucketName: `dcv-imagebuilder-logs-${this.account}-${this.region}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      versioned: false,
+      lifecycleRules: [
+        {
+          id: 'DeleteOldLogs',
+          enabled: true,
+          expiration: cdk.Duration.days(30), // Delete logs after 30 days
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change to RETAIN for production
+    });
+
     // Create IAM role for Image Builder instance
     const instanceRole = new iam.Role(this, 'DcvImageBuilderInstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -45,6 +62,9 @@ export class DcvImageBuilderStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
       ],
     });
+
+    // Grant S3 permissions to the instance role for logging
+    logsBucket.grantWrite(instanceRole);
 
     // Create instance profile
     const instanceProfile = new iam.CfnInstanceProfile(this, 'DcvImageBuilderInstanceProfile', {
@@ -198,7 +218,7 @@ phases:
         // Enable detailed monitoring
         logging: {
           s3Logs: {
-            s3BucketName: `dcv-imagebuilder-logs-${this.account}-${this.region}`,
+            s3BucketName: logsBucket.bucketName,
             s3KeyPrefix: 'dcv-gateway-logs/',
           },
         },
@@ -307,6 +327,12 @@ phases:
       parameterName: '/isolated/dcv/imagebuilder/security-group/id',
       stringValue: imageBuilderSg.securityGroupId,
       description: 'Security Group ID for DCV Gateway Image Builder',
+    });
+
+    new ssm.StringParameter(this, 'DcvLogsBucketName', {
+      parameterName: '/isolated/dcv/imagebuilder/logs-bucket/name',
+      stringValue: logsBucket.bucketName,
+      description: 'S3 Bucket name for DCV Gateway Image Builder logs',
     });
 
     
