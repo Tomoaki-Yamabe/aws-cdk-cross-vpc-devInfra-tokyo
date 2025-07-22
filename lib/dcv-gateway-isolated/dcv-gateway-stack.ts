@@ -223,7 +223,7 @@ export class DcvGatewayStack extends cdk.Stack {
       }),
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 1,
-        minInstancesInService: 1,
+        minInstancesInService: 0,
         pauseTime: cdk.Duration.minutes(5),
       }),
     });
