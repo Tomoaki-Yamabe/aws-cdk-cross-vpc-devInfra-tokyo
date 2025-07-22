@@ -90,8 +90,8 @@ export class DcvImageBuilderStack extends cdk.Stack {
     // ------------------ Image Builder ------------------ //
     // Create DCV Gateway installation component
     const dcvInstallComponent = new imagebuilder.CfnComponent(this, 'DcvGatewayInstallComponent', {
-      name: 'install-dcv-gateway',
-      version: '1.0.0',
+      name: 'install-dcv-connection-gateway',
+      version: '1.0.1',
       platform: 'Linux',
       description: 'Install and configure NICE DCV Gateway',
       data: `
@@ -115,9 +115,15 @@ phases:
           commands:
             - echo "Installing NICE DCV Gateway..."
             - cd /tmp
+            - rpm --import https://d1uj6qtbmh3dt5.cloudfront.net/NICE-GPG-KEY
             - wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
             - yum install -y ./nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
-            - rm -f ./nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
+            - wget https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/Gateway/nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
+            - yum install -y ./nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
+            - sudo systemctl daemon-reload
+            - sudo systemctl enable dcv-connection-gateway.service
+            - sudo systemctl start dcv-connection-gateway.service
+
       
       - name: configure-dcv-gateway
         action: ExecuteBash
@@ -134,8 +140,7 @@ phases:
           commands:
             - echo "Applying security hardening..."
             - # Remove unnecessary packages
-            - yum remove -y wget curl
-            - yum autoremove -y
+            - rpm -e --nodeps wget curl
             - # Clear package cache
             - yum clean all
             - # Clear temporary files
@@ -150,9 +155,10 @@ phases:
         inputs:
           commands:
             - echo "Verifying DCV Gateway installation..."
-            - test -f /opt/nice-dcv-gateway/bin/dcv-gateway
-            - systemctl is-enabled dcv-gateway
+            - test -f /opt/nice-dcv-connection-gateway/bin/dcv-connection-gateway
+            - systemctl is-enabled dcv-connection-gateway.service
             - echo "DCV Gateway verification completed successfully"
+
       `,
       tags: {
         Project: 'EliteGen2',
@@ -167,7 +173,7 @@ phases:
     // Create image recipe
     const imageRecipe = new imagebuilder.CfnImageRecipe(this, 'DcvGatewayImageRecipe', {
       name: 'dcv-gateway-recipe',
-      version: '1.0.0',
+      version: '1.0.1',
       description: 'Image recipe for NICE DCV Gateway',
       components: [
         {
