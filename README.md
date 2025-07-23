@@ -201,6 +201,45 @@ cdk destroy --all
 * `npx cdk synth`   - CloudFormationテンプレートを生成
 * `npx cdk destroy` - スタックを削除
 
+
+## DCV GW
+```bash
+  # 1. 一時ディレクトリを作成して移動
+sudo mkdir -p /tmp/dcvgw
+cd /tmp/dcvgw
+
+# 2. wget と curl がなければインストール
+sudo yum install -y wget curl
+
+# 3. DCV Web クライアント用アーカイブをダウンロード
+sudo wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz
+
+# 4. アーカイブを展開
+sudo tar -xvzf nice-dcv-amzn2-x86_64.tgz
+
+# 5. 展開されたディレクトリをまとめる
+sudo mkdir -p /tmp/dcvgw/dcv-server-packages
+sudo mv nice-dcv-*/ /tmp/dcvgw/dcv-server-packages/
+
+# 6. Web ビューアの RPM をインストール
+sudo yum localinstall -y /tmp/dcvgw/dcv-server-packages/nice-dcv-web-viewer-*.rpm
+
+# 7. Gateway の設定ファイルを編集
+sudo nano /etc/dcv-connection-gateway/dcv-connection-gateway.conf
+
+# 8. systemd をリロードして Gateway を再起動
+sudo systemctl daemon-reload
+sudo systemctl restart dcv-connection-gateway
+
+# 9. ポートが LISTEN しているか確認（HTTP:8090、HTTPS:8443）
+sudo ss -tulpn | grep -E '8090|8443'
+
+# 10. HTTP/0.9 モードで静的ファイルが返るか確認
+curl --http0.9 --output - http://localhost:8090/index.html
+
+```
+
+
 ## 参考資料
 
 - [AWS CDK Developer Guide](https://docs.aws.amazon.com/cdk/v2/guide/)

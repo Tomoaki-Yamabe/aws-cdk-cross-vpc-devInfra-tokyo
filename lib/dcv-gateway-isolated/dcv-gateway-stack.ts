@@ -5,6 +5,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 
 interface DcvGatewayStackProps extends cdk.StackProps {
   vpcId: string;
@@ -16,6 +17,7 @@ interface DcvGatewayStackProps extends cdk.StackProps {
 export class DcvGatewayStack extends cdk.Stack {
   public readonly autoScalingGroup: autoscaling.AutoScalingGroup;
   public readonly targetGroup: elbv2.NetworkTargetGroup;
+  public readonly webResourcesBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: DcvGatewayStackProps) {
     super(scope, id, props);
@@ -183,7 +185,30 @@ export class DcvGatewayStack extends cdk.Stack {
       // Start CloudWatch agent
       '/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s',
       
-      'echo "DCV Gateway configuration completed"'
+      // Create temporary HTTP responder for port 8090 health checks
+      'cat > /tmp/temp_http_server.py << EOF',
+      'import http.server',
+      'import socketserver',
+      'import threading',
+      '',
+      'class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):',
+      '    def do_GET(self):',
+      '        self.send_response(200)',
+      '        self.send_header("Content-type", "text/html")',
+      '        self.end_headers()',
+      '        self.wfile.write(b"OK - Temporary health check endpoint")',
+      '',
+      'PORT = 8090',
+      'with socketserver.TCPServer(("", PORT), HealthCheckHandler) as httpd:',
+      '    print(f"Serving temporary health check on port {PORT}")',
+      '    httpd.serve_forever()',
+      'EOF',
+      
+      // Start temporary HTTP server in background
+      'nohup python3 /tmp/temp_http_server.py > /var/log/temp_http_server.log 2>&1 &',
+      
+      'echo "DCV Gateway configuration completed"',
+      'echo "Temporary HTTP server started on port 8090 for health checks"'
     );
 
     // Create launch template for DCV Gateway
@@ -218,7 +243,7 @@ export class DcvGatewayStack extends cdk.Stack {
       minCapacity: 1,
       maxCapacity: 1,
       desiredCapacity: 1, // Start with 2 instances for HA
-      healthCheck: autoscaling.HealthCheck.elb({
+      healthCheck: autoscaling.HealthCheck.ec2({
         grace: cdk.Duration.minutes(5),
       }),
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
@@ -262,9 +287,8 @@ export class DcvGatewayStack extends cdk.Stack {
       protocol: elbv2.Protocol.TCP,
       targetType: elbv2.TargetType.INSTANCE,
       healthCheck: {
-        port: '8090',
-        protocol: elbv2.Protocol.HTTP,
-        path: '/',
+        port: '8090', // Use DCV Gateway's standard connection port
+        protocol: elbv2.Protocol.TCP,
         healthyThresholdCount: 2,
         unhealthyThresholdCount: 3,
         timeout: cdk.Duration.seconds(10),

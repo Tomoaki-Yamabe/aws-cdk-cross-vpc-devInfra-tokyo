@@ -5,7 +5,8 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { IsolatedInfraStack } from '../lib/base-isolated/infra-stack';
 import { LinkedInfraStack } from '../lib/base-linked/infra-stack';
 import { EcsServiceStack } from '../lib/services-isolated/ecs-service-stack';
-import { DcvImageBuilderStack } from '../lib/base-isolated/dcv-imagebuilder-stack';
+import { DcvImageBuilderStack } from '../lib/dcv-gateway-isolated/dcv-imagebuilder-stack';
+import { DcvGatewayStack } from '../lib/dcv-gateway-isolated/dcv-gateway-stack';
 
 const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'ap-northeast-1' };
@@ -31,14 +32,27 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
   ],
 });
 
-// ----------------------- DCV Image Builder ----------------------- //
+// ----------------------- DCV Gateway ----------------------- //
 // Create DCV Gateway Image Builder stack
-new DcvImageBuilderStack(app, 'XILS-DcvImageBuilderStack', {
+const dcvImageBuilderStack = new DcvImageBuilderStack(app, 'XILS-DcvImageBuilderStack', {
   env,
   vpcId: 'vpc-0e7cbf03a96f57ed9', // Same as isolated VPC
   subnetIds: [
     'subnet-0946dbacc0fa49edc', // Use first isolated subnet for Image Builder
   ],
+});
+
+// Create DCV Gateway stack (depends on both ImageBuilder and InfraStack)
+new DcvGatewayStack(app, 'XILS-DcvGatewayStack', {
+  env,
+  vpcId: 'vpc-0e7cbf03a96f57ed9', // Same as isolated VPC
+  subnetIds: [
+    'subnet-0946dbacc0fa49edc',
+    'subnet-07800dd2b3e7a7401',
+    'subnet-0fb7d240419bcb4fe'
+  ],
+  nlbArn: infraStack.loadBalancerArn,
+  nlbDnsName: infraStack.nlbDnsName,
 });
 
 // ----------------------- ECS Services ----------------------- //

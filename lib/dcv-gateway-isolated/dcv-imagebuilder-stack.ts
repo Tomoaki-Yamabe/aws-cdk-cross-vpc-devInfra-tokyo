@@ -91,9 +91,9 @@ export class DcvImageBuilderStack extends cdk.Stack {
     // Create DCV Gateway installation component
     const dcvInstallComponent = new imagebuilder.CfnComponent(this, 'DcvGatewayInstallComponent', {
       name: 'install-dcv-connection-gateway',
-      version: '1.0.1',
+      version: '1.0.3',
       platform: 'Linux',
-      description: 'Install and configure NICE DCV Gateway',
+      description: 'Install and configure NICE DCV Gateway with Web Viewer',
       data: `
 name: install-dcv-gateway
 description: Install and configure NICE DCV Gateway
@@ -115,23 +115,62 @@ phases:
           commands:
             - echo "Installing NICE DCV Gateway..."
             - cd /tmp
-            - rpm --import https://d1uj6qtbmh3dt5.cloudfront.net/NICE-GPG-KEY
-            - wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
-            - yum install -y ./nice-dcv-gateway-2023.1.16220-1.el7.x86_64.rpm
+            
+            # Download and extract DCV packages (Web Viewer)
+            - wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz
+            - tar -xzf nice-dcv-amzn2-x86_64.tgz
+            - mkdir -p /tmp/dcvgw/dcv-server-packages
+            - mv nice-dcv-2024.0-*/ /tmp/dcvgw/dcv-server-packages/
+            
+            # Install DCV Web Viewer (required for Web UI)
+            - yum localinstall -y /tmp/dcvgw/dcv-server-packages/nice-dcv-2024.0-*/nice-dcv-web-viewer-*.rpm
+            
+            # Install DCV Connection Gateway
             - wget https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/Gateway/nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
             - yum install -y ./nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
-            - sudo systemctl daemon-reload
-            - sudo systemctl enable dcv-connection-gateway.service
-            - sudo systemctl start dcv-connection-gateway.service
 
-      
       - name: configure-dcv-gateway
         action: ExecuteBash
         inputs:
           commands:
             - echo "Configuring NICE DCV Gateway..."
-            - /opt/nice-dcv-gateway/bin/dcv-gateway-setup --mode gateway --session-manager-host localhost
-            - systemctl enable dcv-gateway
+            
+            # Create proper configuration file
+            - |
+              cat > /etc/dcv-connection-gateway/dcv-connection-gateway.conf << 'EOF'
+              [gateway]
+              web-listen-endpoints = ["0.0.0.0:8090", "0.0.0.0:8443"]
+              web-port = 8090
+              quic-listen-endpoints = ["0.0.0.0:8443"]
+              quic-port = 8443
+              
+              [web-resources]
+              local-resources-path = "/usr/share/dcv/www"
+              
+              [health-check]
+              bind-addr = "0.0.0.0"
+              port = 8888
+              
+              [dcv]
+              tls-strict = false
+              
+              [resolver]
+              url = "https://localhost:8081"
+              
+              [log]
+              level = "info"
+              directory = "/var/log/dcv-connection-gateway"
+              EOF
+            
+            # Set proper permissions
+            - chown root:root /etc/dcv-connection-gateway/dcv-connection-gateway.conf
+            - chmod 644 /etc/dcv-connection-gateway/dcv-connection-gateway.conf
+            
+            # Enable and start the service
+            - systemctl daemon-reload
+            - systemctl enable dcv-connection-gateway.service
+            - systemctl start dcv-connection-gateway.service
+            
             - echo "DCV Gateway installation and configuration completed"
       
       - name: security-hardening
@@ -173,8 +212,8 @@ phases:
     // Create image recipe
     const imageRecipe = new imagebuilder.CfnImageRecipe(this, 'DcvGatewayImageRecipe', {
       name: 'dcv-gateway-recipe',
-      version: '1.0.1',
-      description: 'Image recipe for NICE DCV Gateway',
+      version: '1.0.3',
+      description: 'Image recipe for NICE DCV Gateway with Web Viewer',
       components: [
         {
           componentArn: dcvInstallComponent.attrArn,
@@ -264,6 +303,13 @@ phases:
                 BuildDate: '{{ imagebuilder:buildDate }}',
               },
             },
+            // "launchTemplateConfigurations": [
+            //   {
+            //     "launchTemplateId": "lt-0123456789abcdef0",
+            //     "accountId": "123456789012",
+            //     "setDefaultVersion": true
+            //   }
+            // ]
           },
         ],
         tags: {
