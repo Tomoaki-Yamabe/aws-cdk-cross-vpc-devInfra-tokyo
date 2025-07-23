@@ -66,6 +66,24 @@ export class DcvGatewayStack extends cdk.Stack {
       ],
     });
 
+    // Create S3 private bucket for DCV web resources
+    this.webResourcesBucket = new s3.Bucket(this, 'DcvWebResourcesBucket', {
+      bucketName: `dcv-web-client-private-${this.account}-${this.region}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      versioned: false,
+    });
+
+    // Add S3 Gateway Endpoint to VPC
+    const s3GatewayEndpoint = vpc.addGatewayEndpoint('S3GatewayEndpoint', {
+      service: ec2.GatewayVpcEndpointAwsService.S3,
+      subnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }],
+    });
+
+    // Grant S3 read access to DCV Gateway role
+    this.webResourcesBucket.grantRead(dcvGatewayRole);
+
     // Add custom policy for DCV Gateway operations
     dcvGatewayRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -78,6 +96,21 @@ export class DcvGatewayStack extends cdk.Stack {
       ],
       resources: ['*'],
     }));
+
+    // Add bucket policy to restrict access to VPC only
+    const bucketPolicyStatement = new iam.PolicyStatement({
+      sid: 'AllowReadFromGatewayOnly',
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ArnPrincipal(dcvGatewayRole.roleArn)],
+      actions: ['s3:GetObject'],
+      resources: [`${this.webResourcesBucket.bucketArn}/*`],
+      conditions: {
+        StringEquals: {
+          'aws:SourceVpc': vpc.vpcId,
+        },
+      },
+    });
+    this.webResourcesBucket.addToResourcePolicy(bucketPolicyStatement);
 
     // Create security group for DCV Gateway
     const dcvGatewaySg = new ec2.SecurityGroup(this, 'DcvGatewaySecurityGroup', {
@@ -115,14 +148,23 @@ export class DcvGatewayStack extends cdk.Stack {
       // Configure DCV Gateway
       'echo "Configuring DCV Gateway..."',
       
-      // Set up DCV Gateway configuration
-      'mkdir -p /etc/dcv-gateway',
-      'cat > /etc/dcv-gateway/gateway.conf << EOF',
+      // Download and extract DCV web client to S3 (one-time setup)
+      'mkdir -p /tmp/dcvweb && cd /tmp/dcvweb',
+      'wget -q https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz',
+      'tar -xzf nice-dcv-amzn2-x86_64.tgz',
+      `aws s3 sync $(find . -type d -name "nice-dcv-*" -print -quit)/usr/share/dcv/www s3://${this.webResourcesBucket.bucketName} --region ${this.region} || echo "Web resources already uploaded or upload failed"`,
+      
+      // Set up DCV Connection Gateway configuration with S3 web resources
+      'mkdir -p /etc/dcv-connection-gateway',
+      'cat > /etc/dcv-connection-gateway/dcv-connection-gateway.conf << EOF',
       '[gateway]',
       'web-port = 8090',
       'web-port-tls = 8443',
       'session-manager-host = localhost',
       'session-manager-port = 8445',
+      '',
+      '[web-resources]',
+      `url = "http://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com"`,
       '',
       '[resolver]',
       'enable = true',
@@ -131,16 +173,16 @@ export class DcvGatewayStack extends cdk.Stack {
       '',
       '[log]',
       'level = info',
-      'file = /var/log/dcv-gateway/gateway.log',
+      'file = /var/log/dcv-connection-gateway/gateway.log',
       'EOF',
       
       // Create log directory
-      'mkdir -p /var/log/dcv-gateway',
-      'chown dcv-gateway:dcv-gateway /var/log/dcv-gateway',
+      'mkdir -p /var/log/dcv-connection-gateway',
+      'chown dcv-connection-gateway:dcv-connection-gateway /var/log/dcv-connection-gateway',
       
-      // Start and enable DCV Gateway service
-      'systemctl start dcv-gateway',
-      'systemctl enable dcv-gateway',
+      // Start and enable DCV Connection Gateway service
+      'systemctl start dcv-connection-gateway',
+      'systemctl enable dcv-connection-gateway',
       
       // Install CloudWatch agent
       'yum install -y amazon-cloudwatch-agent',
@@ -153,8 +195,8 @@ export class DcvGatewayStack extends cdk.Stack {
       '      "files": {',
       '        "collect_list": [',
       '          {',
-      '            "file_path": "/var/log/dcv-gateway/gateway.log",',
-      '            "log_group_name": "/aws/ec2/dcv-gateway",',
+      '            "file_path": "/var/log/dcv-connection-gateway/gateway.log",',
+      '            "log_group_name": "/aws/ec2/dcv-connection-gateway",',
       '            "log_stream_name": "{instance_id}/gateway.log"',
       '          }',
       '        ]',
@@ -207,7 +249,8 @@ export class DcvGatewayStack extends cdk.Stack {
       // Start temporary HTTP server in background
       'nohup python3 /tmp/temp_http_server.py > /var/log/temp_http_server.log 2>&1 &',
       
-      'echo "DCV Gateway configuration completed"',
+      'echo "DCV Connection Gateway configuration completed"',
+      'echo "Web resources configured to use S3 bucket"',
       'echo "Temporary HTTP server started on port 8090 for health checks"'
     );
 
@@ -326,6 +369,12 @@ export class DcvGatewayStack extends cdk.Stack {
       description: 'Security Group ID for DCV Gateway instances',
     });
 
+    new ssm.StringParameter(this, 'DcvWebResourcesBucketName', {
+      parameterName: '/isolated/dcv/gateway/web-resources/bucket-name',
+      stringValue: this.webResourcesBucket.bucketName,
+      description: 'Name of the DCV Web Resources S3 bucket',
+    });
+
     // CloudFormation outputs
     new cdk.CfnOutput(this, 'DcvGatewayAsgNameOutput', {
       value: this.autoScalingGroup.autoScalingGroupName,
@@ -343,6 +392,12 @@ export class DcvGatewayStack extends cdk.Stack {
       value: `https://${nlb.loadBalancerDnsName}:8443`,
       description: 'DCV Gateway HTTPS endpoint',
       exportName: 'DcvGatewayEndpoint',
+    });
+
+    new cdk.CfnOutput(this, 'DcvWebResourcesBucketNameOutput', {
+      value: this.webResourcesBucket.bucketName,
+      description: 'Name of the DCV Web Resources S3 bucket',
+      exportName: 'DcvWebResourcesBucketName',
     });
   }
 }

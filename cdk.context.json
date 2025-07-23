@@ -374,5 +374,6 @@
   "acknowledged-issue-numbers": [
     34892,
     34892
-  ]
+  ],
+  "ami:account=481393820746:filters.image-type.0=machine:filters.name.0=DCV-Gateway-AMI-*:filters.state.0=available:owners.0=481393820746:region=ap-northeast-1": "ami-05e9f4b547e72626c"
 }
