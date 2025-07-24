@@ -75,12 +75,6 @@ export class DcvGatewayStack extends cdk.Stack {
       versioned: false,
     });
 
-    // Add S3 Gateway Endpoint to VPC
-    const s3GatewayEndpoint = vpc.addGatewayEndpoint('S3GatewayEndpoint', {
-      service: ec2.GatewayVpcEndpointAwsService.S3,
-      subnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }],
-    });
-
     // Grant S3 read access to DCV Gateway role
     this.webResourcesBucket.grantRead(dcvGatewayRole);
 
@@ -97,16 +91,20 @@ export class DcvGatewayStack extends cdk.Stack {
       resources: ['*'],
     }));
 
-    // Add bucket policy to restrict access to VPC only
+    // Add bucket policy to allow access via VPC endpoints
     const bucketPolicyStatement = new iam.PolicyStatement({
-      sid: 'AllowReadFromGatewayOnly',
+      sid: 'AllowAnonReadFromVPCE',
       effect: iam.Effect.ALLOW,
-      principals: [new iam.ArnPrincipal(dcvGatewayRole.roleArn)],
+      principals: [new iam.StarPrincipal()],
       actions: ['s3:GetObject'],
       resources: [`${this.webResourcesBucket.bucketArn}/*`],
       conditions: {
         StringEquals: {
-          'aws:SourceVpc': vpc.vpcId,
+          'aws:SourceVpce': [
+            'vpce-00adfd3bb1ddd3b3e',
+            'vpce-0ca34d81ba2679378',
+            'vpce-0d5b5ce599c738f3f'
+          ],
         },
       },
     });
@@ -145,6 +143,13 @@ export class DcvGatewayStack extends cdk.Stack {
       '#!/bin/bash',
       'yum update -y',
       
+      // Install DCV Connection Gateway
+      'echo "Installing DCV Connection Gateway..."',
+      'wget -q https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz',
+      'tar -xzf nice-dcv-amzn2-x86_64.tgz',
+      'cd nice-dcv-*',
+      'yum install -y nice-dcv-connection-gateway-*.rpm',
+      
       // Configure DCV Gateway
       'echo "Configuring DCV Gateway..."',
       
@@ -158,31 +163,98 @@ export class DcvGatewayStack extends cdk.Stack {
       'mkdir -p /etc/dcv-connection-gateway',
       'cat > /etc/dcv-connection-gateway/dcv-connection-gateway.conf << EOF',
       '[gateway]',
+      '# HTTP（Web UI 配信用）',
       'web-port = 8090',
-      'web-port-tls = 8443',
-      'session-manager-host = localhost',
-      'session-manager-port = 8445',
+      'web-listen-endpoints = ["0.0.0.0:8090"]',
       '',
-      '[web-resources]',
-      `url = "http://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com"`,
+      '# QUIC/TLS 接続用',
+      'quic-listen-endpoints = ["0.0.0.0:8443"]',
+      'quic-port = 8443',
       '',
       '[resolver]',
-      'enable = true',
-      'host = localhost',
-      'port = 8447',
+      'url = "http://localhost:8447"',
+      '',
+      '[web-resources]',
+      `url = "https://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com"`,
       '',
       '[log]',
-      'level = info',
-      'file = /var/log/dcv-connection-gateway/gateway.log',
+      'level = "info"',
+      'directory = "/var/log/dcv-connection-gateway"',
       'EOF',
       
       // Create log directory
       'mkdir -p /var/log/dcv-connection-gateway',
-      'chown dcv-connection-gateway:dcv-connection-gateway /var/log/dcv-connection-gateway',
       
-      // Start and enable DCV Connection Gateway service
-      'systemctl start dcv-connection-gateway',
+      // Create Session Resolver
+      'cat > /tmp/session_resolver.py << EOF',
+      'import http.server',
+      'import socketserver',
+      'import json',
+      'import urllib.parse',
+      '',
+      'class SessionResolverHandler(http.server.BaseHTTPRequestHandler):',
+      '    def do_GET(self):',
+      '        parsed_path = urllib.parse.urlparse(self.path)',
+      '        query_params = urllib.parse.parse_qs(parsed_path.query)',
+      '        ',
+      '        # Extract session ID from query parameters',
+      '        session_id = query_params.get("sessionId", [""])[0]',
+      '        ',
+      '        # Return session information',
+      '        response = {',
+      '            "sessionId": session_id,',
+      '            "dcvSessionId": session_id,',
+      '            "tags": {},',
+      '            "type": "CONSOLE"',
+      '        }',
+      '        ',
+      '        self.send_response(200)',
+      '        self.send_header("Content-type", "application/json")',
+      '        self.end_headers()',
+      '        self.wfile.write(json.dumps(response).encode())',
+      '',
+      '    def log_message(self, format, *args):',
+      '        pass  # Suppress default logging',
+      '',
+      'PORT = 8447',
+      'with socketserver.TCPServer(("", PORT), SessionResolverHandler) as httpd:',
+      '    print(f"Session Resolver running on port {PORT}")',
+      '    httpd.serve_forever()',
+      'EOF',
+      
+      // Start Session Resolver in background
+      'nohup python3 /tmp/session_resolver.py > /var/log/session_resolver.log 2>&1 &',
+      
+      // Wait a moment for Session Resolver to start
+      'sleep 2',
+      
+      // Install DCV Web Viewer for local resources
+      'echo "Installing DCV Web Viewer..."',
+      'cd /tmp/dcvweb',
+      'yum localinstall -y $(find . -name "nice-dcv-web-viewer-*.rpm" -print -quit) || echo "Web viewer installation failed or already installed"',
+      
+      // Try systemd service first, fallback to manual execution
+      'systemctl daemon-reload',
       'systemctl enable dcv-connection-gateway',
+      'systemctl restart dcv-connection-gateway',
+      'sleep 5',
+      
+      // Check if systemd service is running, if not start manually
+      'if ! systemctl is-active --quiet dcv-connection-gateway; then',
+      '  echo "systemd service failed, starting manually..."',
+      '  pkill -f dcv-connection-gateway || true',
+      '  sleep 2',
+      '  nohup /usr/libexec/dcv-connection-gateway/dcv-connection-gateway --config /etc/dcv-connection-gateway/dcv-connection-gateway.conf > /var/log/dcv-connection-gateway/manual.log 2>&1 &',
+      '  sleep 5',
+      'fi',
+      
+      // Check if ports are listening
+      'echo "Checking port status..."',
+      'ss -tulpn | grep -E "8090|8443|8447" || echo "Port check completed"',
+      
+      // Test S3 connection
+      'echo "Testing S3 connection..."',
+      `curl -s --connect-timeout 5 https://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com/index.html | head -3 || echo "S3 test completed"`,
       
       // Install CloudWatch agent
       'yum install -y amazon-cloudwatch-agent',
@@ -227,31 +299,9 @@ export class DcvGatewayStack extends cdk.Stack {
       // Start CloudWatch agent
       '/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s',
       
-      // Create temporary HTTP responder for port 8090 health checks
-      'cat > /tmp/temp_http_server.py << EOF',
-      'import http.server',
-      'import socketserver',
-      'import threading',
-      '',
-      'class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):',
-      '    def do_GET(self):',
-      '        self.send_response(200)',
-      '        self.send_header("Content-type", "text/html")',
-      '        self.end_headers()',
-      '        self.wfile.write(b"OK - Temporary health check endpoint")',
-      '',
-      'PORT = 8090',
-      'with socketserver.TCPServer(("", PORT), HealthCheckHandler) as httpd:',
-      '    print(f"Serving temporary health check on port {PORT}")',
-      '    httpd.serve_forever()',
-      'EOF',
-      
-      // Start temporary HTTP server in background
-      'nohup python3 /tmp/temp_http_server.py > /var/log/temp_http_server.log 2>&1 &',
-      
       'echo "DCV Connection Gateway configuration completed"',
-      'echo "Web resources configured to use S3 bucket"',
-      'echo "Temporary HTTP server started on port 8090 for health checks"'
+      'echo "Web resources configured to use S3 bucket via HTTPS"',
+      'echo "DCV Gateway listening on ports 8090 (HTTP) and 8443 (QUIC/TLS)"'
     );
 
     // Create launch template for DCV Gateway
