@@ -1,0 +1,15 @@
+[Unit]
+Description=Amazon DCV Connection Gateway
+After=network.target
+
+[Service]
+Type=simple
+# 開発環境なので root で実行（最も手早い）
+User=root
+ExecStart=/usr/libexec/dcv-connection-gateway/dcv-connection-gateway \
+          --config /etc/dcv-connection-gateway/dcv-connection-gateway.conf
+Restart=on-failure
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

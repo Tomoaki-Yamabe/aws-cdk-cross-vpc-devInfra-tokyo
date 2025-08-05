@@ -5,7 +5,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import * as s3 from 'aws-cdk-lib/aws-s3';
 
 interface DcvGatewayStackProps extends cdk.StackProps {
   vpcId: string;
@@ -17,7 +16,6 @@ interface DcvGatewayStackProps extends cdk.StackProps {
 export class DcvGatewayStack extends cdk.Stack {
   public readonly autoScalingGroup: autoscaling.AutoScalingGroup;
   public readonly targetGroup: elbv2.NetworkTargetGroup;
-  public readonly webResourcesBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: DcvGatewayStackProps) {
     super(scope, id, props);
@@ -46,14 +44,10 @@ export class DcvGatewayStack extends cdk.Stack {
       vpc: vpc,
     });
 
-    // Get the latest DCV Gateway AMI from ImageBuilder
-    const dcvGatewayAmi = new ec2.LookupMachineImage({
-      name: 'DCV-Gateway-AMI-*',
-      owners: [this.account],
-      filters: {
-        'state': ['available'],
-        'image-type': ['machine'],
-      },
+    // Use Amazon Linux 2023 AMI
+    const dcvGatewayAmi = ec2.MachineImage.latestAmazonLinux2023({
+      cpuType: ec2.AmazonLinuxCpuType.X86_64,
+      userData: ec2.UserData.forLinux()
     });
 
     // Create IAM role for DCV Gateway instances
@@ -65,18 +59,6 @@ export class DcvGatewayStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
       ],
     });
-
-    // Create S3 private bucket for DCV web resources
-    this.webResourcesBucket = new s3.Bucket(this, 'DcvWebResourcesBucket', {
-      bucketName: `dcv-web-client-private-${this.account}-${this.region}`,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      versioned: false,
-    });
-
-    // Grant S3 read access to DCV Gateway role
-    this.webResourcesBucket.grantRead(dcvGatewayRole);
 
     // Add custom policy for DCV Gateway operations
     dcvGatewayRole.addToPolicy(new iam.PolicyStatement({
@@ -91,25 +73,6 @@ export class DcvGatewayStack extends cdk.Stack {
       resources: ['*'],
     }));
 
-    // Add bucket policy to allow access via VPC endpoints
-    const bucketPolicyStatement = new iam.PolicyStatement({
-      sid: 'AllowAnonReadFromVPCE',
-      effect: iam.Effect.ALLOW,
-      principals: [new iam.StarPrincipal()],
-      actions: ['s3:GetObject'],
-      resources: [`${this.webResourcesBucket.bucketArn}/*`],
-      conditions: {
-        StringEquals: {
-          'aws:SourceVpce': [
-            'vpce-00adfd3bb1ddd3b3e',
-            'vpce-0ca34d81ba2679378',
-            'vpce-0d5b5ce599c738f3f'
-          ],
-        },
-      },
-    });
-    this.webResourcesBucket.addToResourcePolicy(bucketPolicyStatement);
-
     // Create security group for DCV Gateway
     const dcvGatewaySg = new ec2.SecurityGroup(this, 'DcvGatewaySecurityGroup', {
       vpc: vpc,
@@ -117,147 +80,102 @@ export class DcvGatewayStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // Allow DCV Gateway traffic (port 8443 for HTTPS, 8081 for HTTP)
+    // Allow DCV Gateway traffic (port 8443 for HTTPS/WebSocket)
     dcvGatewaySg.addIngressRule(
-      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Peer.anyIpv4(),
       ec2.Port.tcp(8443),
-      'DCV Gateway HTTPS traffic'
+      'DCV Gateway/WebSocket'
     );
 
+    // Allow SSH for management
     dcvGatewaySg.addIngressRule(
-      ec2.Peer.ipv4(vpc.vpcCidrBlock),
-      ec2.Port.tcp(8090),
-      'DCV Gateway HTTP traffic'
-    );
-
-    // Allow SSH for management (optional, can be removed for production)
-    dcvGatewaySg.addIngressRule(
-      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Peer.anyIpv4(),
       ec2.Port.tcp(22),
-      'SSH access for management'
+      'SSH'
     );
 
-    // Create user data script for DCV Gateway configuration
-    const userData = ec2.UserData.forLinux();
+    // Allow Broker internal ports
+    dcvGatewaySg.addIngressRule(
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Port.tcpRange(8445, 8448),
+      'Broker internal'
+    );
+
+    // Allow DCV QUIC
+    dcvGatewaySg.addIngressRule(
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Port.udp(8443),
+      'DCV QUIC'
+    );
+
+    // Create user data script for DCV Gateway + Session Manager Broker configuration
+    const userData = ec2.UserData.forLinux({ shebang: '#!/bin/bash -xe' });
     userData.addCommands(
-      '#!/bin/bash',
-      'yum update -y',
+      //
+      // --- DCV リポジトリ & RPM セット ---
+      //
+      'yum -y install jq curl unzip',
+
+      'cat >/etc/yum.repos.d/nice-dcv.repo <<EOF',
+      '[dcv]',
+      'name=NICE DCV packages',
+      'baseurl=https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/rhel/9/x86_64/',
+      'gpgcheck=0',
+      'enabled=1',
+      'EOF',
+
+      'yum -y install nice-dcv-session-manager-broker nice-dcv-connection-gateway',
       
-      // Install DCV Connection Gateway
-      'echo "Installing DCV Connection Gateway..."',
-      'wget -q https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz',
-      'tar -xzf nice-dcv-amzn2-x86_64.tgz',
-      'cd nice-dcv-*',
-      'yum install -y nice-dcv-connection-gateway-*.rpm',
-      
-      // Configure DCV Gateway
-      'echo "Configuring DCV Gateway..."',
-      
-      // Download and extract DCV web client to S3 (one-time setup)
-      'mkdir -p /tmp/dcvweb && cd /tmp/dcvweb',
-      'wget -q https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz',
-      'tar -xzf nice-dcv-amzn2-x86_64.tgz',
-      `aws s3 sync $(find . -type d -name "nice-dcv-*" -print -quit)/usr/share/dcv/www s3://${this.webResourcesBucket.bucketName} --region ${this.region} || echo "Web resources already uploaded or upload failed"`,
-      
-      // Set up DCV Connection Gateway configuration with S3 web resources
-      'mkdir -p /etc/dcv-connection-gateway',
-      'cat > /etc/dcv-connection-gateway/dcv-connection-gateway.conf << EOF',
-      '[gateway]',
-      '# HTTP（Web UI 配信用）',
-      'web-port = 8090',
-      'web-listen-endpoints = ["0.0.0.0:8090"]',
+      //
+      // --- Broker 設定 ---
+      //
+      "cat >>/etc/dcv-session-manager-broker/session-manager-broker.properties <<'CONF'",
+      '# 内部認証サーバを同居',
+      'enable-gateway              = true',
+      'enable-authorization-server = true',
+      'enable-authorization        = true',
       '',
-      '# QUIC/TLS 接続用',
-      'quic-listen-endpoints = ["0.0.0.0:8443"]',
-      'quic-port = 8443',
+      '# ポート',
+      'client-to-broker-connector-https-port  = 8448',
+      'gateway-to-broker-connector-https-port = 8447',
+      'agent-to-broker-connector-https-port   = 8445',
+      '',
+      '# クラスタ設定（単一ノード）',
+      'broker-to-broker-connection-login = dcvsm-user',
+      'broker-to-broker-connection-pass  = dcvsm-pass',
+      'broker-to-broker-discovery-addresses = 127.0.0.1:47500',
+      'CONF',
+      
+      //
+      // --- Gateway 設定 ---
+      //
+      "install -d -o dcvcgw -g dcvcgw /etc/dcv-connection-gateway/certs",
+      "# 自己署名証明書（テスト用途）",
+      'openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -subj "/CN=$(hostname -f)" \\',
+      '        -keyout /etc/dcv-connection-gateway/certs/dcv.key \\',
+      '        -out  /etc/dcv-connection-gateway/certs/dcv.crt',
+      'chmod 600 /etc/dcv-connection-gateway/certs/dcv.key',
+      'chown dcvcgw:dcvcgw /etc/dcv-connection-gateway/certs/dcv.*',
+
+      "cat >/etc/dcv-connection-gateway/dcv-connection-gateway.conf <<'GWCONF'",
+      '[gateway]',
+      'quic-listen-endpoints  = []',
+      'web-listen-endpoints   = ["0.0.0.0:8443"]',
+      'cert-file      = "/etc/dcv-connection-gateway/certs/dcv.crt"',
+      'cert-key-file  = "/etc/dcv-connection-gateway/certs/dcv.key"',
       '',
       '[resolver]',
-      'url = "http://localhost:8447"',
-      '',
-      '[web-resources]',
-      `url = "https://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com"`,
+      'url        = "https://127.0.0.1:8447"',
+      'tls-strict = false',
       '',
       '[log]',
       'level = "info"',
-      'directory = "/var/log/dcv-connection-gateway"',
-      'EOF',
+      'GWCONF',
       
-      // Create log directory
-      'mkdir -p /var/log/dcv-connection-gateway',
-      
-      // Create Session Resolver
-      'cat > /tmp/session_resolver.py << EOF',
-      'import http.server',
-      'import socketserver',
-      'import json',
-      'import urllib.parse',
-      '',
-      'class SessionResolverHandler(http.server.BaseHTTPRequestHandler):',
-      '    def do_GET(self):',
-      '        parsed_path = urllib.parse.urlparse(self.path)',
-      '        query_params = urllib.parse.parse_qs(parsed_path.query)',
-      '        ',
-      '        # Extract session ID from query parameters',
-      '        session_id = query_params.get("sessionId", [""])[0]',
-      '        ',
-      '        # Return session information pointing to the new DCV instance',
-      '        response = {',
-      '            "sessionId": "console-session",',
-      '            "dcvSessionId": "console-session",',
-      '            "endpoint": "10.150.248.152:8443",',
-      '            "tags": {},',
-      '            "type": "CONSOLE"',
-      '        }',
-      '        ',
-      '        self.send_response(200)',
-      '        self.send_header("Content-type", "application/json")',
-      '        self.send_header("Access-Control-Allow-Origin", "*")',
-      '        self.end_headers()',
-      '        self.wfile.write(json.dumps(response).encode())',
-      '        print(f"Session request: {self.path} -> {response}")',
-      '',
-      '    def log_message(self, format, *args):',
-      '        pass  # Suppress default logging',
-      '',
-      'PORT = 8447',
-      'with socketserver.TCPServer(("", PORT), SessionResolverHandler) as httpd:',
-      '    print(f"Session Resolver running on port {PORT}, pointing to DCV instance 10.150.248.152:8443 with session console-session")',
-      '    httpd.serve_forever()',
-      'EOF',
-      
-      // Start Session Resolver in background
-      'nohup python3 /tmp/session_resolver.py > /var/log/session_resolver.log 2>&1 &',
-      
-      // Wait a moment for Session Resolver to start
-      'sleep 2',
-      
-      // Install DCV Web Viewer for local resources
-      'echo "Installing DCV Web Viewer..."',
-      'cd /tmp/dcvweb',
-      'yum localinstall -y $(find . -name "nice-dcv-web-viewer-*.rpm" -print -quit) || echo "Web viewer installation failed or already installed"',
-      
-      // Try systemd service first, fallback to manual execution
-      'systemctl daemon-reload',
-      'systemctl enable dcv-connection-gateway',
-      'systemctl restart dcv-connection-gateway',
-      'sleep 5',
-      
-      // Check if systemd service is running, if not start manually
-      'if ! systemctl is-active --quiet dcv-connection-gateway; then',
-      '  echo "systemd service failed, starting manually..."',
-      '  pkill -f dcv-connection-gateway || true',
-      '  sleep 2',
-      '  nohup /usr/libexec/dcv-connection-gateway/dcv-connection-gateway --config /etc/dcv-connection-gateway/dcv-connection-gateway.conf > /var/log/dcv-connection-gateway/manual.log 2>&1 &',
-      '  sleep 5',
-      'fi',
-      
-      // Check if ports are listening
-      'echo "Checking port status..."',
-      'ss -tulpn | grep -E "8090|8443|8447" || echo "Port check completed"',
-      
-      // Test S3 connection
-      'echo "Testing S3 connection..."',
-      `curl -s --connect-timeout 5 https://${this.webResourcesBucket.bucketName}.s3.${this.region}.amazonaws.com/index.html | head -3 || echo "S3 test completed"`,
+      //
+      // --- サービス起動 ---
+      //
+      'systemctl enable --now dcv-session-manager-broker dcv-connection-gateway',
       
       // Install CloudWatch agent
       'yum install -y amazon-cloudwatch-agent',
@@ -273,6 +191,11 @@ export class DcvGatewayStack extends cdk.Stack {
       '            "file_path": "/var/log/dcv-connection-gateway/gateway.log",',
       '            "log_group_name": "/aws/ec2/dcv-connection-gateway",',
       '            "log_stream_name": "{instance_id}/gateway.log"',
+      '          },',
+      '          {',
+      '            "file_path": "/var/log/dcv-session-manager-broker/broker.log",',
+      '            "log_group_name": "/aws/ec2/dcv-session-manager-broker",',
+      '            "log_stream_name": "{instance_id}/broker.log"',
       '          }',
       '        ]',
       '      }',
@@ -302,19 +225,18 @@ export class DcvGatewayStack extends cdk.Stack {
       // Start CloudWatch agent
       '/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s',
       
-      'echo "DCV Connection Gateway configuration completed"',
-      'echo "Web resources configured to use S3 bucket via HTTPS"',
-      'echo "DCV Gateway listening on ports 8090 (HTTP) and 8443 (QUIC/TLS)"'
+      'echo "DCV Gateway + Session Manager Broker configuration completed"'
     );
 
     // Create launch template for DCV Gateway
     const launchTemplate = new ec2.LaunchTemplate(this, 'DcvGatewayLaunchTemplate', {
-      launchTemplateName: 'dcv-gateway-launch-template',
+      launchTemplateName: 'dcv-gateway-broker-launch-template',
       machineImage: dcvGatewayAmi,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.M6I, ec2.InstanceSize.LARGE),
       securityGroup: dcvGatewaySg,
       role: dcvGatewayRole,
       userData: userData,
+      keyName: 'tom', // Use tom key pair for SSH access
       blockDevices: [
         {
           deviceName: '/dev/xvda',
@@ -338,14 +260,14 @@ export class DcvGatewayStack extends cdk.Stack {
       launchTemplate: launchTemplate,
       minCapacity: 1,
       maxCapacity: 1,
-      desiredCapacity: 1, // Start with 2 instances for HA
+      desiredCapacity: 1,
       healthCheck: autoscaling.HealthCheck.ec2({
-        grace: cdk.Duration.minutes(5),
+        grace: cdk.Duration.minutes(10), // Increased grace period for broker startup
       }),
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 1,
         minInstancesInService: 0,
-        pauseTime: cdk.Duration.minutes(5),
+        pauseTime: cdk.Duration.minutes(10), // Increased pause time
       }),
     });
 
@@ -376,33 +298,6 @@ export class DcvGatewayStack extends cdk.Stack {
       defaultTargetGroups: [this.targetGroup],
     });
 
-    // Create HTTP listener for health checks and management
-    const httpTargetGroup = new elbv2.NetworkTargetGroup(this, 'DcvGatewayHttpTargetGroup', {
-      vpc: vpc,
-      port: 8090, // DCV Gateway HTTP port
-      protocol: elbv2.Protocol.TCP,
-      targetType: elbv2.TargetType.INSTANCE,
-      healthCheck: {
-        port: '8090', // Use DCV Gateway's standard connection port
-        protocol: elbv2.Protocol.TCP,
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 3,
-        timeout: cdk.Duration.seconds(10),
-        interval: cdk.Duration.seconds(30),
-      },
-    });
-
-    // Attach Auto Scaling Group to HTTP target group
-    this.autoScalingGroup.attachToNetworkTargetGroup(httpTargetGroup);
-
-    // Create HTTP listener
-    new elbv2.NetworkListener(this, 'DcvGatewayHttpListener', {
-      loadBalancer: nlb,
-      port: 8090, // External HTTP port
-      protocol: elbv2.Protocol.TCP,
-      defaultTargetGroups: [httpTargetGroup],
-    });
-
     // Store important values in SSM Parameter Store
     new ssm.StringParameter(this, 'DcvGatewayAsgName', {
       parameterName: '/isolated/dcv/gateway/asg/name',
@@ -422,11 +317,6 @@ export class DcvGatewayStack extends cdk.Stack {
       description: 'Security Group ID for DCV Gateway instances',
     });
 
-    new ssm.StringParameter(this, 'DcvWebResourcesBucketName', {
-      parameterName: '/isolated/dcv/gateway/web-resources/bucket-name',
-      stringValue: this.webResourcesBucket.bucketName,
-      description: 'Name of the DCV Web Resources S3 bucket',
-    });
 
     // CloudFormation outputs
     new cdk.CfnOutput(this, 'DcvGatewayAsgNameOutput', {
@@ -443,14 +333,9 @@ export class DcvGatewayStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'DcvGatewayEndpoint', {
       value: `https://${nlb.loadBalancerDnsName}:8443`,
-      description: 'DCV Gateway HTTPS endpoint',
+      description: 'DCV Gateway + Session Manager Broker HTTPS endpoint',
       exportName: 'DcvGatewayEndpoint',
     });
 
-    new cdk.CfnOutput(this, 'DcvWebResourcesBucketNameOutput', {
-      value: this.webResourcesBucket.bucketName,
-      description: 'Name of the DCV Web Resources S3 bucket',
-      exportName: 'DcvWebResourcesBucketName',
-    });
   }
 }

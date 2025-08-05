@@ -90,13 +90,13 @@ export class DcvImageBuilderStack extends cdk.Stack {
     // ------------------ Image Builder ------------------ //
     // Create DCV Gateway installation component
     const dcvInstallComponent = new imagebuilder.CfnComponent(this, 'DcvGatewayInstallComponent', {
-      name: 'install-dcv-connection-gateway',
-      version: '1.0.3',
+      name: 'install-dcv-gateway-broker',
+      version: '1.0.4',
       platform: 'Linux',
-      description: 'Install and configure NICE DCV Gateway with Web Viewer',
+      description: 'Install and configure NICE DCV Gateway with Session Manager Broker',
       data: `
-name: install-dcv-gateway
-description: Install and configure NICE DCV Gateway
+name: install-dcv-gateway-broker
+description: Install and configure NICE DCV Gateway with Session Manager Broker
 schemaVersion: 1.0
 phases:
   - name: build
@@ -107,82 +107,95 @@ phases:
           commands:
             - echo "Updating system packages..."
             - yum update -y
-            - yum install -y wget curl
+            - yum install -y jq curl unzip openssl
       
-      - name: install-dcv-gateway
+      - name: setup-dcv-repository
         action: ExecuteBash
         inputs:
           commands:
-            - echo "Installing NICE DCV Gateway..."
-            - cd /tmp
-            
-            # Download and extract DCV packages (Web Viewer)
-            - wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz
-            - tar -xzf nice-dcv-amzn2-x86_64.tgz
-            - mkdir -p /tmp/dcvgw/dcv-server-packages
-            - mv nice-dcv-2024.0-*/ /tmp/dcvgw/dcv-server-packages/
-            
-            # Install DCV Web Viewer (required for Web UI)
-            - yum localinstall -y /tmp/dcvgw/dcv-server-packages/nice-dcv-2024.0-*/nice-dcv-web-viewer-*.rpm
-            
-            # Install DCV Connection Gateway
-            - wget https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/Gateway/nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
-            - yum install -y ./nice-dcv-connection-gateway-2024.0.848-1.el7.x86_64.rpm
-
-      - name: configure-dcv-gateway
-        action: ExecuteBash
-        inputs:
-          commands:
-            - echo "Configuring NICE DCV Gateway..."
-            
-            # Create proper configuration file
+            - echo "Setting up DCV repository..."
             - |
-              cat > /etc/dcv-connection-gateway/dcv-connection-gateway.conf << 'EOF'
-              [gateway]
-              web-listen-endpoints = ["0.0.0.0:8090", "0.0.0.0:8443"]
-              web-port = 8090
-              quic-listen-endpoints = ["0.0.0.0:8443"]
-              quic-port = 8443
-              
-              [web-resources]
-              local-resources-path = "/usr/share/dcv/www"
-              
-              [health-check]
-              bind-addr = "0.0.0.0"
-              port = 8888
-              
+              cat >/etc/yum.repos.d/nice-dcv.repo <<EOF
               [dcv]
-              tls-strict = false
+              name=NICE DCV packages
+              baseurl=https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/rhel/9/x86_64/
+              gpgcheck=0
+              enabled=1
+              EOF
+
+      - name: install-dcv-components
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Installing DCV Session Manager Broker and Connection Gateway..."
+            - yum -y install nice-dcv-session-manager-broker nice-dcv-connection-gateway
+
+      - name: configure-broker
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Configuring Session Manager Broker..."
+            - |
+              cat >>/etc/dcv-session-manager-broker/session-manager-broker.properties <<'CONF'
+              # 内部認証サーバを同居
+              enable-gateway              = true
+              enable-authorization-server = true
+              enable-authorization        = true
+              
+              # ポート
+              client-to-broker-connector-https-port  = 8448
+              gateway-to-broker-connector-https-port = 8447
+              agent-to-broker-connector-https-port   = 8445
+              
+              # クラスタ設定（単一ノード）
+              broker-to-broker-connection-login = dcvsm-user
+              broker-to-broker-connection-pass  = dcvsm-pass
+              broker-to-broker-discovery-addresses = 127.0.0.1:47500
+              CONF
+
+      - name: configure-gateway
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Configuring Connection Gateway..."
+            - install -d -o dcvcgw -g dcvcgw /etc/dcv-connection-gateway/certs
+            - |
+              openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -subj "/CN=$(hostname -f)" \
+                      -keyout /etc/dcv-connection-gateway/certs/dcv.key \
+                      -out  /etc/dcv-connection-gateway/certs/dcv.crt
+            - chmod 600 /etc/dcv-connection-gateway/certs/dcv.key
+            - chown dcvcgw:dcvcgw /etc/dcv-connection-gateway/certs/dcv.*
+            - |
+              cat >/etc/dcv-connection-gateway/dcv-connection-gateway.conf <<'GWCONF'
+              [gateway]
+              quic-listen-endpoints  = []
+              web-listen-endpoints   = ["0.0.0.0:8443"]
+              cert-file      = "/etc/dcv-connection-gateway/certs/dcv.crt"
+              cert-key-file  = "/etc/dcv-connection-gateway/certs/dcv.key"
               
               [resolver]
-              url = "https://localhost:8081"
+              url        = "https://127.0.0.1:8447"
+              tls-strict = false
               
               [log]
               level = "info"
-              directory = "/var/log/dcv-connection-gateway"
-              EOF
-            
-            # Set proper permissions
-            - chown root:root /etc/dcv-connection-gateway/dcv-connection-gateway.conf
-            - chmod 644 /etc/dcv-connection-gateway/dcv-connection-gateway.conf
-            
-            # Enable and start the service
+              GWCONF
+
+      - name: enable-services
+        action: ExecuteBash
+        inputs:
+          commands:
+            - echo "Enabling services..."
             - systemctl daemon-reload
-            - systemctl enable dcv-connection-gateway.service
-            - systemctl start dcv-connection-gateway.service
-            
-            - echo "DCV Gateway installation and configuration completed"
+            - systemctl enable dcv-session-manager-broker dcv-connection-gateway
+            - echo "DCV Gateway + Broker installation and configuration completed"
       
       - name: security-hardening
         action: ExecuteBash
         inputs:
           commands:
             - echo "Applying security hardening..."
-            - # Remove unnecessary packages
-            - rpm -e --nodeps wget curl
-            - # Clear package cache
             - yum clean all
-            - # Clear temporary files
             - rm -rf /tmp/*
             - rm -rf /var/tmp/*
             - echo "Security hardening completed"
@@ -193,10 +206,12 @@ phases:
         action: ExecuteBash
         inputs:
           commands:
-            - echo "Verifying DCV Gateway installation..."
-            - test -f /opt/nice-dcv-connection-gateway/bin/dcv-connection-gateway
+            - echo "Verifying DCV Gateway + Broker installation..."
+            - systemctl is-enabled dcv-session-manager-broker.service
             - systemctl is-enabled dcv-connection-gateway.service
-            - echo "DCV Gateway verification completed successfully"
+            - test -f /etc/dcv-session-manager-broker/session-manager-broker.properties
+            - test -f /etc/dcv-connection-gateway/dcv-connection-gateway.conf
+            - echo "DCV Gateway + Broker verification completed successfully"
 
       `,
       tags: {
@@ -211,15 +226,15 @@ phases:
 
     // Create image recipe
     const imageRecipe = new imagebuilder.CfnImageRecipe(this, 'DcvGatewayImageRecipe', {
-      name: 'dcv-gateway-recipe',
-      version: '1.0.3',
-      description: 'Image recipe for NICE DCV Gateway with Web Viewer',
+      name: 'dcv-gateway-broker-recipe',
+      version: '1.0.4',
+      description: 'Image recipe for NICE DCV Gateway with Session Manager Broker',
       components: [
         {
           componentArn: dcvInstallComponent.attrArn,
         },
       ],
-      parentImage: `arn:aws:imagebuilder:${this.region}:aws:image/amazon-linux-2-x86/x.x.x`,
+      parentImage: `arn:aws:imagebuilder:${this.region}:aws:image/amazon-linux-2023-x86/x.x.x`,
       blockDeviceMappings: [
         {
           deviceName: '/dev/xvda',
