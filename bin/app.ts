@@ -5,6 +5,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { IsolatedInfraStack } from '../lib/base-isolated/infra-stack';
 import { LinkedInfraStack } from '../lib/base-linked/infra-stack';
 import { EcsServiceStack } from '../lib/services-isolated/ecs-service-stack';
+import { OnpremConnectorStack } from '../lib/services-isolated/onprem-connector-stack';
 
 const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'ap-northeast-1' };
@@ -30,7 +31,31 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
   ],
 });
 
-// Services
+// --------------------- PrivateLink VPC Connection --------------------- //
+//
+//   Available Port 60000 - 70000
+//
+
+const AwsToOnprem_Connector = [
+  {
+    id: 'onpremise-gitlab-server-port',
+    onpremTargetPort: 60002,
+    isolateVpcReceivePort: 60001,
+  },
+  {
+    id: 'onpremise-hils-server-port',
+    onpremTargetPort: 60010,
+    isolateVpcReceivePort: 60010,
+  },
+  {
+    id: 'onpremise-matlab-server-port',
+    onpremTargetPort: 66666,
+    isolateVpcReceivePort: 50001,
+  }
+];
+
+// -------------------  Isolated VPC Services ------------------- //
+
 const services = [
   {
     id: 'ChatbotService',
@@ -84,5 +109,14 @@ for (const svc of services) {
     env,
     vpc: infraStack.vpc,
     ...svc,
+  });
+}
+
+// --------------------- Onpremise Connector --------------------- //
+// Create onpremise connector stack for PrivateLink port sharing
+if (AwsToOnprem_Connector && AwsToOnprem_Connector.length > 0) {
+  new OnpremConnectorStack(app, 'XILS-OnpremConnector', {
+    env,
+    connectors: AwsToOnprem_Connector,
   });
 }
