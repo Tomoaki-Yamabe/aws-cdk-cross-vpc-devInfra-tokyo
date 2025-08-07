@@ -112,7 +112,7 @@ export class OnpremConnectorStack extends cdk.Stack {
     
     targetIps.forEach((ip) => {
       targetGroup.addTarget(
-        new targets.IpTarget(ip, connector.onpremTargetPort)
+        new targets.IpTarget(ip, connector.onpremTargetPort, "all")
       );
     });
 
@@ -130,10 +130,15 @@ export class OnpremConnectorStack extends cdk.Stack {
     // Add descriptive tags
     cdk.Tags.of(targetGroup).add('ServiceName', connector.id);
     cdk.Tags.of(targetGroup).add('Purpose', 'OnpremiseConnection');
-    const ipList = Array.isArray(connector.onpremTargetIp)
-      ? connector.onpremTargetIp.join(',')
+    const firstIp = Array.isArray(connector.onpremTargetIp)
+      ? connector.onpremTargetIp[0]
       : connector.onpremTargetIp;
-    cdk.Tags.of(targetGroup).add('OnpremiseIPs', ipList);
+    cdk.Tags.of(targetGroup).add('OnpremiseIP', firstIp);
+    
+    // 複数IPの場合は個数をTag
+    if (Array.isArray(connector.onpremTargetIp)) {
+      cdk.Tags.of(targetGroup).add('TargetCount', connector.onpremTargetIp.length.toString());
+    }
   }
 
 
