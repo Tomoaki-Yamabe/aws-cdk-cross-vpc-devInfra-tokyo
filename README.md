@@ -7,6 +7,7 @@
 - **Base Isolated Stack**: 独立したVPC環境でのベースインフラストラクチャ
 - **Base Linked Stack**: 他のVPCと連携するベースインフラストラクチャ
 - **Services Isolated Stack**: ECSサービスを含む独立したサービス環境
+- **Onprem Connector Stack**: オンプレミスとのPrivateLink接続機能
 
 ## 前提条件
 
@@ -175,20 +176,52 @@ cdk destroy --all
 
 ```
 ├── bin/
-│   └── app.ts                    # CDKアプリケーションのエントリーポイント
+│   └── app.ts                           # CDKアプリケーションのエントリーポイント
 ├── lib/
 │   ├── base-isolated/
-│   │   └── infra-stack.ts        # 独立ベースインフラスタック
+│   │   └── infra-stack.ts               # 独立ベースインフラスタック
 │   ├── base-linked/
-│   │   ├── infra-stack.ts        # 連携ベースインフラスタック
-│   │   ├── apiserver-userdata.ts # APIサーバーのユーザーデータ
-│   │   └── scripts/              # セットアップスクリプト
+│   │   ├── infra-stack.ts               # 連携ベースインフラスタック
+│   │   ├── apiserver-userdata.ts        # APIサーバーのユーザーデータ
+│   │   └── scripts/                     # セットアップスクリプト
 │   └── services-isolated/
-│       └── ecs-service-stack.ts  # ECSサービススタック
-├── test/                         # テストファイル
-├── cdk.json                      # CDK設定ファイル
-└── package.json                  # npm設定ファイル
+│       ├── ecs-service-stack.ts         # ECSサービススタック
+│       └── onprem-connector-stack.ts    # オンプレミス接続スタック
+├── docs/
+│   └── ONPREM_CONNECTOR_USAGE.md        # オンプレミス接続機能使用ガイド
+├── scripts/
+│   └── test-onprem-connector.sh         # オンプレミス接続機能テストスクリプト
+├── test/                                # テストファイル
+├── cdk.json                             # CDK設定ファイル
+└── package.json                         # npm設定ファイル
 ```
+
+## オンプレミス接続機能
+
+このプロジェクトには、AWS Isolated VPCからオンプレミスへのPrivateLink接続を簡単に設定できる機能が含まれています。
+
+### 特徴
+- **簡単設定**: `app.ts`のパラメータ追記だけで動作
+- **チーム共有**: CDKを書けない人でも使用可能
+
+### 使用方法
+
+1. **接続設定の追加**
+   ```typescript
+   // bin/app.ts
+  {
+    id: 'onpremise-gitlabas4-server-port',
+    onpremTargetIp: '172.23.11.223',
+    onpremTargetPort: 80,
+    isolateVpcReceivePort: 80,
+  },
+   ```
+
+2. **デプロイ実行**
+   ```bash
+   cdk deploy XILS-OnpremConnector
+   ```
+
 
 
 ## cdk command list
