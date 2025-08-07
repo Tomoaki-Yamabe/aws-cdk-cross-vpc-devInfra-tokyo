@@ -34,12 +34,12 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
 // --------------------- Isolated to onPrem PrivateLink ruting rule --------------------- //
 
 const AwsToOnprem_Connector = [
-  // {
-  //   id: 'onpremise-gitlabas4-server-port',
-  //   onpremTargetIp: '172.23.11.223',
-  //   onpremTargetPort: 80,
-  //   isolateVpcReceivePort: 80,
-  // },
+  {
+    id: 'onpremise-gitlabas4-server-port',
+    onpremTargetIp: '172.23.11.223',
+    onpremTargetPort: 80,
+    isolateVpcReceivePort: 80,
+  },
   {
     id: 'onpremise-gitlab-server-port',
     onpremTargetIp: '172.25.220.91',
