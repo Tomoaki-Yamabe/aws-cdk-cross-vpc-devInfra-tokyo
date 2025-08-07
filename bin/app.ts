@@ -31,26 +31,38 @@ const infraStack = new IsolatedInfraStack(app, 'XILS-IsolatedInfraStack', {
   ],
 });
 
-// --------------------- PrivateLink VPC Connection --------------------- //
-//
-//   Available Port 60000 - 70000
-//
+// --------------------- Isolated to onPrem PrivateLink ruting rule --------------------- //
 
 const AwsToOnprem_Connector = [
   {
-    id: 'onpremise-gitlab-server-port',
-    onpremTargetPort: 60002,
-    isolateVpcReceivePort: 60001,
+    id: 'onpremise-gitlabas4-server-port',
+    onpremTargetIp: '172.23.11.223',
+    onpremTargetPort: 80,
+    isolateVpcReceivePort: 80,
   },
   {
-    id: 'onpremise-hils-server-port',
-    onpremTargetPort: 60010,
-    isolateVpcReceivePort: 60010,
+    id: 'onpremise-gitlab-server-port',
+    onpremTargetIp: '172.25.220.91',
+    onpremTargetPort: 60139,
+    isolateVpcReceivePort: 60139,
+  },
+  {
+    id: 'onpremise-silver-server-port',
+    onpremTargetIp: '172.25.220.91',
+    onpremTargetPort: 27020,
+    isolateVpcReceivePort: 27020,
+  },
+  {
+    id: 'onpremise-carmaker-server-port',
+    onpremTargetIp: '172.27.119.135',
+    onpremTargetPort: 11010,
+    isolateVpcReceivePort: 11010,
   },
   {
     id: 'onpremise-matlab-server-port',
-    onpremTargetPort: 66666,
-    isolateVpcReceivePort: 50001,
+    onpremTargetIp: ['172.27.119.130', '172.27.119.132', '172.27.119.129'],
+    onpremTargetPort: 27400,
+    isolateVpcReceivePort: 27400,
   }
 ];
 
