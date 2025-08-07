@@ -2,10 +2,12 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 export interface OnpremConnectorConfig {
   id: string;
+  onpremTargetIp: string | string[];  // 単一IPまたは複数IPに対応
   onpremTargetPort: number;
   isolateVpcReceivePort: number;
 }
@@ -84,7 +86,7 @@ export class OnpremConnectorStack extends cdk.Stack {
 
 
   /**
-   * Create onpremise connector (target group + listener)
+   * Create onpremise connector (target group + listener + IP target)
    */
   private createOnpremConnector(connector: OnpremConnectorConfig): void {
     // Create target group for onpremise service
@@ -103,6 +105,17 @@ export class OnpremConnectorStack extends cdk.Stack {
       },
     });
 
+    // Add onpremise IP(s) as target(s) to the target group
+    const targetIps = Array.isArray(connector.onpremTargetIp)
+      ? connector.onpremTargetIp
+      : [connector.onpremTargetIp];
+    
+    targetIps.forEach((ip) => {
+      targetGroup.addTarget(
+        new targets.IpTarget(ip, connector.onpremTargetPort)
+      );
+    });
+
     // Add listener to existing NLB
     const listener = this.linkedNlb.addListener(`${connector.id}Listener`, {
       port: connector.isolateVpcReceivePort,
@@ -117,6 +130,10 @@ export class OnpremConnectorStack extends cdk.Stack {
     // Add descriptive tags
     cdk.Tags.of(targetGroup).add('ServiceName', connector.id);
     cdk.Tags.of(targetGroup).add('Purpose', 'OnpremiseConnection');
+    const ipList = Array.isArray(connector.onpremTargetIp)
+      ? connector.onpremTargetIp.join(',')
+      : connector.onpremTargetIp;
+    cdk.Tags.of(targetGroup).add('OnpremiseIPs', ipList);
   }
 
 
