@@ -1,0 +1,3 @@
+nohup: ignoring input
+INFO:__main__:Simple DCV Gateway starting on port 8445
+INFO:__main__:Session Resolver: http://localhost:9000

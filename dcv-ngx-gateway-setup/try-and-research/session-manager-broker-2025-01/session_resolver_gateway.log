@@ -1,0 +1,121 @@
+2025-08-06 11:21:42,154 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:21:42,155 - INFO - Port Mapping:
+2025-08-06 11:21:42,155 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:21:42,155 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:21:42,155 - INFO - Session Mapping:
+2025-08-06 11:21:42,155 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,155 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:21:42,155 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,155 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,155 - INFO -   agent2 -> Agent2 (Port: 60000)
+ * Serving Flask app 'session_resolver_gateway_fixed'
+ * Debug mode: on
+2025-08-06 11:21:42,193 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9000
+ * Running on http://10.213.111.222:9000
+2025-08-06 11:21:42,194 - INFO - [33mPress CTRL+C to quit[0m
+2025-08-06 11:21:42,210 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:21:42,396 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:21:42,397 - INFO - Port Mapping:
+2025-08-06 11:21:42,397 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:21:42,397 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:21:42,397 - INFO - Session Mapping:
+2025-08-06 11:21:42,397 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,397 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:21:42,397 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,397 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:21:42,397 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:21:42,414 - WARNING -  * Debugger is active!
+2025-08-06 11:21:42,552 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:21:44,965 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:44] "GET /health HTTP/1.1" 200 -
+2025-08-06 11:21:52,894 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:52] "GET /health HTTP/1.1" 200 -
+2025-08-06 11:21:53,065 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:53] "GET /sessions HTTP/1.1" 200 -
+2025-08-06 11:21:53,208 - INFO - Gateway Session Resolver Request: sessionId=console, transport=HTTP, clientIP=127.0.0.1
+2025-08-06 11:21:53,209 - INFO - Gateway Session Resolver Response: {'SessionId': 'console', 'TransportProtocol': 'HTTP', 'DcvServerEndpoint': '10.213.66.188', 'Port': 50001, 'WebUrlPath': '/'}
+2025-08-06 11:21:53,210 - INFO - Routing to Agent1 (Port: 50001)
+2025-08-06 11:21:53,212 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:53] "POST /resolveSession?sessionId=console&transport=HTTP&clientIpAddress=127.0.0.1 HTTP/1.1" 200 -
+2025-08-06 11:21:53,316 - INFO - Gateway Session Resolver Request: sessionId=desktop, transport=HTTP, clientIP=127.0.0.1
+2025-08-06 11:21:53,316 - INFO - Gateway Session Resolver Response: {'SessionId': 'desktop', 'TransportProtocol': 'HTTP', 'DcvServerEndpoint': '10.213.66.188', 'Port': 60000, 'WebUrlPath': '/'}
+2025-08-06 11:21:53,316 - INFO - Routing to Agent2 (Port: 60000)
+2025-08-06 11:21:53,316 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:53] "POST /resolveSession?sessionId=desktop&transport=HTTP&clientIpAddress=127.0.0.1 HTTP/1.1" 200 -
+2025-08-06 11:29:18,386 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:18,388 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:18,714 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:19,364 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:29:19,364 - INFO - Port Mapping:
+2025-08-06 11:29:19,365 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:29:19,365 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:29:19,365 - INFO - Session Mapping:
+2025-08-06 11:29:19,365 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:29:19,366 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:29:19,366 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:29:19,366 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:29:19,366 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:29:19,388 - WARNING -  * Debugger is active!
+2025-08-06 11:29:19,389 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:29:21,971 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:22,031 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:22,332 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:22,587 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:23,273 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:29:23,273 - INFO - Port Mapping:
+2025-08-06 11:29:23,273 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:29:23,273 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:29:23,273 - INFO - Session Mapping:
+2025-08-06 11:29:23,273 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:29:23,273 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:29:23,273 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:29:23,273 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:29:23,273 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:29:23,308 - WARNING -  * Debugger is active!
+2025-08-06 11:29:23,311 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:29:30,657 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:30,661 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:30,937 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:31,414 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:29:31,416 - INFO - Port Mapping:
+2025-08-06 11:29:31,416 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:29:31,417 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:29:31,417 - INFO - Session Mapping:
+2025-08-06 11:29:31,417 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:29:31,418 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:29:31,418 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:29:31,419 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:29:31,419 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:29:31,460 - WARNING -  * Debugger is active!
+2025-08-06 11:29:31,461 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:07,216 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,216 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,219 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,997 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:08,208 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:30:08,209 - INFO - Port Mapping:
+2025-08-06 11:30:08,209 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:30:08,209 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:30:08,209 - INFO - Session Mapping:
+2025-08-06 11:30:08,209 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:30:08,209 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:30:08,209 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:30:08,209 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:30:08,209 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:30:08,229 - WARNING -  * Debugger is active!
+2025-08-06 11:30:08,230 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:27,966 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:27,966 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_enhanced.py', reloading
+2025-08-06 11:30:28,740 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:29,120 - INFO - Starting DCV Gateway Session Resolver
+2025-08-06 11:30:29,121 - INFO - Port Mapping:
+2025-08-06 11:30:29,122 - INFO -   Agent1: 10.213.66.188:50001
+2025-08-06 11:30:29,124 - INFO -   Agent2: 10.213.66.188:60000
+2025-08-06 11:30:29,124 - INFO - Session Mapping:
+2025-08-06 11:30:29,125 - INFO -   console -> Agent1 (Port: 50001)
+2025-08-06 11:30:29,125 - INFO -   desktop -> Agent2 (Port: 60000)
+2025-08-06 11:30:29,125 - INFO -   demo -> Agent1 (Port: 50001)
+2025-08-06 11:30:29,125 - INFO -   agent1 -> Agent1 (Port: 50001)
+2025-08-06 11:30:29,126 - INFO -   agent2 -> Agent2 (Port: 60000)
+2025-08-06 11:30:29,155 - WARNING -  * Debugger is active!
+2025-08-06 11:30:29,156 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:48,501 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_gateway_fixed.py', reloading
+2025-08-06 11:30:49,264 - INFO -  * Restarting with watchdog (inotify)
+/usr/bin/python3: can't open file '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_gateway_fixed.py': [Errno 2] No such file or directory

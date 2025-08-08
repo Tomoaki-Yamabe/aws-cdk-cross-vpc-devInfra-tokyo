@@ -1,0 +1,133 @@
+2025-08-06 11:21:45,251 - INFO - Starting DCV External Authenticator
+2025-08-06 11:21:45,251 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:21:45,251 - INFO - Security features disabled for connectivity testing
+ * Serving Flask app 'dcv_external_authenticator'
+ * Debug mode: on
+2025-08-06 11:21:45,280 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8444
+ * Running on http://10.213.111.222:8444
+2025-08-06 11:21:45,280 - INFO - [33mPress CTRL+C to quit[0m
+2025-08-06 11:21:45,288 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:21:45,584 - INFO - Starting DCV External Authenticator
+2025-08-06 11:21:45,584 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:21:45,584 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:21:45,604 - WARNING -  * Debugger is active!
+2025-08-06 11:21:45,605 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:21:48,010 - INFO - 127.0.0.1 - - [06/Aug/2025 11:21:48] "GET /health HTTP/1.1" 200 -
+2025-08-06 11:29:18,387 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:18,389 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:18,791 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:19,350 - INFO - Starting DCV External Authenticator
+2025-08-06 11:29:19,352 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:29:19,352 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:29:19,468 - WARNING -  * Debugger is active!
+2025-08-06 11:29:19,471 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:29:22,277 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:22,294 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:22,302 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:23,502 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:23,964 - INFO - Starting DCV External Authenticator
+2025-08-06 11:29:23,967 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:29:23,968 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:29:24,007 - WARNING -  * Debugger is active!
+2025-08-06 11:29:24,008 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:29:30,658 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:30,659 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:29:31,484 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:29:31,858 - INFO - Starting DCV External Authenticator
+2025-08-06 11:29:31,862 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:29:31,862 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:29:31,895 - WARNING -  * Debugger is active!
+2025-08-06 11:29:31,896 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:07,216 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,217 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,220 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:07,855 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:08,049 - INFO - Starting DCV External Authenticator
+2025-08-06 11:30:08,049 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:30:08,049 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:30:08,067 - WARNING -  * Debugger is active!
+2025-08-06 11:30:08,068 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:27,963 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/python_dcv_gateway.py', reloading
+2025-08-06 11:30:27,963 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_enhanced.py', reloading
+2025-08-06 11:30:28,033 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:28,626 - INFO - Starting DCV External Authenticator
+2025-08-06 11:30:28,628 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:30:28,629 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:30:28,712 - WARNING -  * Debugger is active!
+2025-08-06 11:30:28,717 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:48,501 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_gateway_fixed.py', reloading
+2025-08-06 11:30:49,631 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:49,900 - INFO - Starting DCV External Authenticator
+2025-08-06 11:30:49,900 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:30:49,900 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:30:49,922 - WARNING -  * Debugger is active!
+2025-08-06 11:30:49,924 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:30:53,631 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver.py', reloading
+2025-08-06 11:30:53,637 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver.py', reloading
+2025-08-06 11:30:54,251 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:30:54,575 - INFO - Starting DCV External Authenticator
+2025-08-06 11:30:54,576 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:30:54,576 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:30:54,616 - WARNING -  * Debugger is active!
+2025-08-06 11:30:54,623 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:31:00,924 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver.py', reloading
+2025-08-06 11:31:00,928 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver.py', reloading
+2025-08-06 11:31:01,457 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:31:01,642 - INFO - Starting DCV External Authenticator
+2025-08-06 11:31:01,642 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:31:01,642 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:31:01,657 - WARNING -  * Debugger is active!
+2025-08-06 11:31:01,658 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:33:40,047 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:33:40,049 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:33:40,978 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:33:41,233 - INFO - Starting DCV External Authenticator
+2025-08-06 11:33:41,234 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:33:41,234 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:33:41,253 - WARNING -  * Debugger is active!
+2025-08-06 11:33:41,254 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:33:53,722 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:33:53,724 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:33:53,728 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:33:54,464 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:33:54,644 - INFO - Starting DCV External Authenticator
+2025-08-06 11:33:54,644 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:33:54,644 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:33:54,660 - WARNING -  * Debugger is active!
+2025-08-06 11:33:54,660 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:34:53,878 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:34:53,879 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:34:53,882 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:34:53,964 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:34:54,173 - INFO - Starting DCV External Authenticator
+2025-08-06 11:34:54,174 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:34:54,174 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:34:54,190 - WARNING -  * Debugger is active!
+2025-08-06 11:34:54,191 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 11:35:03,692 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:35:03,692 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:35:03,695 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/simple_dcv_gateway.py', reloading
+2025-08-06 11:35:04,177 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 11:35:04,359 - INFO - Starting DCV External Authenticator
+2025-08-06 11:35:04,359 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 11:35:04,359 - INFO - Security features disabled for connectivity testing
+2025-08-06 11:35:04,374 - WARNING -  * Debugger is active!
+2025-08-06 11:35:04,375 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 12:01:09,920 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_official.py', reloading
+2025-08-06 12:01:09,923 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_official.py', reloading
+2025-08-06 12:01:10,040 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 12:01:10,669 - INFO - Starting DCV External Authenticator
+2025-08-06 12:01:10,670 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 12:01:10,670 - INFO - Security features disabled for connectivity testing
+2025-08-06 12:01:10,732 - WARNING -  * Debugger is active!
+2025-08-06 12:01:10,733 - INFO -  * Debugger PIN: 120-329-217
+2025-08-06 12:01:19,794 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_official.py', reloading
+2025-08-06 12:01:19,798 - INFO -  * Detected change in '/home/j0115457/worksptace/aws-cdk-cross-vpc-devInfra-tokyo/session_resolver_official.py', reloading
+2025-08-06 12:01:20,688 - INFO -  * Restarting with watchdog (inotify)
+2025-08-06 12:01:20,872 - INFO - Starting DCV External Authenticator
+2025-08-06 12:01:20,872 - INFO - Valid tokens: ['test123', 'console123', 'demo456']
+2025-08-06 12:01:20,873 - INFO - Security features disabled for connectivity testing
+2025-08-06 12:01:20,888 - WARNING -  * Debugger is active!
+2025-08-06 12:01:20,889 - INFO -  * Debugger PIN: 120-329-217
